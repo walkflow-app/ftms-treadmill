@@ -1,0 +1,56 @@
+{
+  "name": "ftms-treadmill",
+  "version": "0.0.0",
+  "description": "Control an FTMS treadmill safely over Bluetooth: speed limit, ramps, a stop that always gets through",
+  "license": "MIT",
+  "author": "Walkflow contributors",
+  "type": "module",
+  "sideEffects": false,
+  "keywords": [
+    "ftms",
+    "treadmill",
+    "bluetooth",
+    "web-bluetooth",
+    "fitness-machine"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/walkflow-app/walkflow.git",
+    "directory": "packages/ftms-treadmill"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./web-bluetooth": {
+      "types": "./dist/web-bluetooth.d.ts",
+      "import": "./dist/web-bluetooth.js"
+    },
+    "./sim": {
+      "types": "./dist/sim.d.ts",
+      "import": "./dist/sim.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol.d.ts",
+      "import": "./dist/protocol.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/fix-dts.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
