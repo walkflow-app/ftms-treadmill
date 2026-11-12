@@ -1,6 +1,6 @@
 {
   "name": "ftms-treadmill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Control an FTMS treadmill safely over Bluetooth: speed limit, ramps, a stop that always gets through",
   "license": "MIT",
   "author": "Walkflow contributors",
