@@ -13,10 +13,14 @@
     "web-bluetooth",
     "fitness-machine"
   ],
+  "homepage": "https://github.com/walkflow-app/walkflow/tree/main/packages/ftms-treadmill#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/walkflow-app/walkflow.git",
     "directory": "packages/ftms-treadmill"
+  },
+  "bugs": {
+    "url": "https://github.com/walkflow-app/walkflow/issues"
   },
   "exports": {
     ".": {
