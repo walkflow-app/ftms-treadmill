@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/walkflow-app/ftms-treadmill/compare/v0.1.1...v0.1.2) (2026-11-13)
+
+
+### Fixes
+
+* point the npm page to this repository and its docs ([#1](https://github.com/walkflow-app/ftms-treadmill/issues/1)) ([1edac28](https://github.com/walkflow-app/ftms-treadmill/commit/1edac28270e18bdeaffa7c18e6c5ea1e21512d0e))
+
 ## [0.1.1](https://github.com/walkflow-app/walkflow/compare/ftms-treadmill-v0.1.0...ftms-treadmill-v0.1.1) (2026-11-12)
 
 
