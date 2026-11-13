@@ -1,6 +1,6 @@
 // What the treadmill side (protocol, Bluetooth client, safety rules) tells the app, as codes with their values instead of
-// sentences. These parts become a library of their own (docs/LIBRARY.md) and know no language: the app turns each code into
-// text (ui/live/treadmill-text.ts), and TypeScript checks that every code has one.
+// sentences. The library knows no language: the app turns each code into text (docs/API.md, Notices), and a switch over
+// the code lets TypeScript check that every code has one.
 
 import type { Range } from './ftms.ts';
 

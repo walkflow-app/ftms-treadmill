@@ -1,8 +1,8 @@
-# ftms-treadmill: design and API
+# ftms-treadmill: design
 
 The treadmill control of [Walkflow](https://github.com/walkflow-app/walkflow), as a library of its own with a defined API:
 the app only draws, and the control is released, versioned and tested on its own. Short introduction for users:
-[README](../README.md). "The app" below means Walkflow, the first user of the library; its side is in Walkflow's
+[README](../README.md); every function with an example: [API.md](API.md). "The app" below means Walkflow, the first user of the library; its side is in Walkflow's
 [docs/ARCHITECTURE.md](https://github.com/walkflow-app/walkflow/blob/main/docs/ARCHITECTURE.md).
 
 ## Why
@@ -34,117 +34,13 @@ a program drives it through the same API as a button.
 
 ## API
 
-Built in `src/device/treadmill.ts` (`createTreadmill`); the app uses nothing else to drive the belt. Speeds are in km/h,
-incline in percent, distances in meters, times in milliseconds.
-
-```ts
-import { createTreadmill } from 'ftms-treadmill';
-import { WebBluetoothAdapter } from 'ftms-treadmill/web-bluetooth';
-import { SimulatorAdapter } from 'ftms-treadmill/sim';
-
-const tm = createTreadmill({
-  speedLimit: 6,                  // km/h, never commanded above (the app stores and confirms it)
-  limitConfirmed: false,          // needed for a limit above 6 km/h, see "Speed limit above 6 km/h"
-  maxStep: 0.5,                   // km/h per command while ramping
-});
-
-tm.on('data', d => draw(d));          // speed, distance, incline, energy, time, heart rate
-tm.on('notice', n => log(text(n)));   // the app turns codes into its own texts
-tm.on('ended', e => runner.abort(e.reason));
-
-const info = await tm.connect(new WebBluetoothAdapter());  // or a SimulatorAdapter; reads the treadmill, asks for control
-await tm.start();
-tm.setSpeed(3.5);                 // ramps there, held until the belt moves, capped at the limit
-tm.setIncline(2);
-await tm.stop();                  // always urgent, sent again if it did not go through
-tm.disconnect();
-```
+The whole API, with an example for each part, is in [API.md](API.md). In short: `createTreadmill(options)` makes one
+object that owns everything that drives the belt; `connect(adapter)` gives it a treadmill (Web Bluetooth, the simulator
+or an adapter of your own); `start`, `stop`, `pause`, `setSpeed`, `setIncline` drive it; `state` and the events say
+what it does. The sections below explain the parts whose reasons are not obvious from the signatures.
 
 The adapter is given to `connect`, not to `createTreadmill`: one Treadmill keeps its limits across connections, to a real
 treadmill or the demo.
-
-### `createTreadmill(options): Treadmill`
-
-```ts
-interface TreadmillOptions {
-  speedLimit?: number;            // LIMIT_MIN..LIMIT_MAX, default DEFAULT_SPEED_LIMIT; nonsense is the default
-  limitConfirmed?: boolean;       // a person confirmed a limit above LIMIT_CONFIRM_ABOVE; default false
-  maxStep?: number;               // MAX_STEP_MIN..MAX_STEP_MAX, default DEFAULT_MAX_STEP
-  clock?: Clock;                  // now() and wait(ms); for tests, default real time
-}
-```
-
-### `Treadmill`
-
-```ts
-interface Treadmill {
-  connect(adapter: BleAdapter): Promise<ConnectResult>;  // throws if the person cancels or the device has no FTMS
-  disconnect(): void;
-
-  start(): Promise<boolean>;               // control, start speed, Start, then the ramp to the last speed asked for; false if refused or overtaken by a stop
-  stop(): Promise<boolean>;                // urgent; ends the ramp; false and stopFailed if every attempt failed
-  pause(): Promise<boolean>;               // like stop
-
-  setSpeed(kmh: number, opts?: { source?: CommandSource }): number | null;  // the target it will ramp to; null if none allowed or not connected
-  changeSpeed(deltaKmh: number, opts?: { source?: CommandSource }): number | null;
-  setIncline(pct: number): Promise<boolean>;   // clamped to the device range; false if the treadmill cannot set it
-
-  setLimits(l: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void;  // lowering takes effect at once
-  setProgramActive(active: boolean): void;  // a workout or route runs: Start stays locked; false ends the standstill watch
-
-  /** Experiment console: raw bytes, checked against limit, step and interval first; a raw Start needs confirmed */
-  sendRaw(bytes: number[], opts?: { confirmed?: boolean }): Promise<RawResult>;
-
-  readonly state: TreadmillState;          // a fresh snapshot each time it is read
-  on<E extends keyof TreadmillEventMap>(event: E, cb: (e: TreadmillEventMap[E]) => void): () => void;
-}
-
-interface TreadmillState {
-  connected: boolean;
-  belt: BeltPhase;                         // the banner draws from this
-  controls: { start: boolean; pause: boolean; stop: boolean };   // which buttons may be used now
-  maybeRunning: boolean;                   // when in doubt true (beltMaybeRunning)
-  lastMeasured: number | undefined;
-  target: number | null;                   // where the ramp is going
-  lastCommand: { kmh: number; at: number } | null;
-  ramping: boolean;
-  speedLimit: number;
-  limitConfirmed: boolean;
-  maxStep: number;
-  deviceRange: { min: number; max: number };   // what the treadmill reported (1–12 before it did)
-  effectiveMax: number;                    // the device maximum, capped by the limit: never sent above
-  inclineRange: Range | null;
-  controlLost: boolean;
-  stopFailed: boolean;                     // the person has to stop the belt on the treadmill
-  programActive: boolean;
-}
-
-interface TreadmillEventMap {
-  data: TreadmillData;
-  heartRate: number;
-  machineStatus: { event: MachineEvent | null; hex: string };
-  trainingStatus: { hex: string; status: number | null; text: string | null };
-  controlResponse: ControlPointResponse;   // every answer of the treadmill, also an OK
-  notice: Notice;
-  log: string;                             // protocol lines (bytes sent, an answer that could not be read); not for people
-  ended: { reason: EndReason };            // the belt was stopped or stopped by itself: a running program ends
-  stopFailed: boolean;
-  phase: BeltPhase;                        // after a start or stop request and after connecting; state.belt also moves with time
-  target: undefined;                       // target, last command or ramp changed
-  disconnected: { wasRunning: boolean };
-}
-
-type EndReason = 'stop' | 'pause' | 'console' | 'machine-stopped' | 'machine-paused' | 'safety-key' | 'standstill';
-type BeltPhase = 'unknown' | 'standing' | 'starting' | 'running' | 'stopping';
-/** Who asked for a speed: a running workout or route, or the person (buttons, keys, presets). Default 'manual'. */
-type CommandSource = 'program' | 'manual';
-type RawResult =
-  | { action: 'not-connected' } | { action: 'blocked'; reason: ConsoleBlock }
-  | { action: 'needs-confirmation' } | { action: 'sent'; ok: boolean };
-```
-
-A listener that throws is reported (as an uncaught error, a moment later) but never gets in the way: a Stop goes out
-whatever the display does with its events.
 
 ### Belt phase and controls
 
@@ -185,11 +81,11 @@ tested on a real treadmill; the app does not have to change for it.
 
 ### Notices instead of texts
 
-The library knows no language. What it finds or what goes wrong it sends as a code with its values, and the app has one
-function that turns each code into text in every language (`ui/live/treadmill-text.ts`, `noticeText`). TypeScript checks
-that every code has a text, and `tests/architecture.test.ts` checks that the library imports nothing outside its own folder.
+The library knows no language. What it finds or what goes wrong it sends as a code with its values, and the app turns each
+code into text in its languages (Walkflow: `ui/live/treadmill-text.ts`). Switching over `code` lets TypeScript check that
+every code has a text; `tests/architecture.test.ts` checks that the library imports nothing outside its own folder.
 
-The codes are in `src/protocol/notice.ts`:
+The codes are in `src/protocol/notice.ts`; each one with its values and an example: [API.md, Notices](API.md#notices).
 
 | Group | Codes |
 | --- | --- |
@@ -204,7 +100,8 @@ The app has four codes of its own in the same style, for the limit it stores and
 
 Control lost and a standstill are not notices: the first is a Machine Status (`machineStatus` event), the second an `ended` reason.
 
-An error the library throws (only `connect` does) is a `TreadmillError` with one of the codes above. Machine Status and
+Only `connect` throws, with the adapter's own error (no device chosen, no FTMS). A failed write is a `TreadmillError`
+(`no-gatt`, `not-connected`, `write-timeout`), which the library catches itself and reports as `write-failed`. Machine Status and
 Control Point answers stay what the protocol says (`MachineEvent`, `ControlPointResponse`); the app describes them in its
 language. The `log` event carries protocol lines only (bytes sent, an answer that could not be read).
 
@@ -263,4 +160,7 @@ one of them is a `safety` commit and at least a minor version.
   Publishing it starts `.github/workflows/npm-publish.yml`: tests, a check that the tag matches the version, the build,
   `npm publish` with provenance. No token: npm trusts that workflow (Trusted Publishing, set in the package settings on
   npmjs.com: GitHub Actions, `walkflow-app/ftms-treadmill`, `npm-publish.yml`, no environment).
+- **Documentation:** [API.md](API.md) covers every export (`tests/docs.test.ts` fails when something new is not in it),
+  and every `ts` example in it and in the README compiles against the sources (`npm run check:docs`, in CI).
+  `examples/simulator.ts` runs in CI after the build, against the built package.
 - **Version 0.x** until the API has been used for a while; then 1.0.
