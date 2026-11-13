@@ -20,6 +20,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run check:docs
       - run: npm run build
+      # The example drives the simulator through the built package, as a user would
+      - run: node examples/simulator.ts
       # Packs only what it should (dist without tests, README, LICENSE, CHANGELOG)
       - run: npm pack --dry-run

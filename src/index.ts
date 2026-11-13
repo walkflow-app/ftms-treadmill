@@ -1,4 +1,4 @@
-// ftms-treadmill: controls an FTMS treadmill safely (docs/LIBRARY.md in the walkflow repository). This is the core: pure,
+// ftms-treadmill: controls an FTMS treadmill safely (docs/API.md, docs/LIBRARY.md). This is the core: pure,
 // no DOM, no storage, no texts; it runs in a browser and in Node. The Web Bluetooth adapter, the simulator and the bare
 // protocol have entry points of their own.
 

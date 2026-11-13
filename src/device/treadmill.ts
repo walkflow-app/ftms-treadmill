@@ -1,6 +1,6 @@
 // The treadmill as one object with a defined API (docs/LIBRARY.md): connect, start, stop, pause, a speed and an incline, the
 // limits, and what the treadmill reports. It owns everything that drives the belt (the governor, the standstill detection,
-// the belt phase, the order of start and stop), so that the app only draws and asks. It becomes the ftms-treadmill library.
+// the belt phase, the order of start and stop), so that the app only draws and asks. The API: docs/API.md.
 // No texts and no DOM: what it has to say is a Notice code, the app says it in its language.
 
 import { cmdRequestControl, cmdSetInclination, cmdSetSpeed, hex, OP, parseTrainingStatus, type ControlPointResponse, type MachineEvent, type Range, type TreadmillData } from '../protocol/ftms.ts';

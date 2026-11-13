@@ -70,14 +70,21 @@ await tm.connect(new SimulatorAdapter());     // a simulated FTMS treadmill, als
 5. When the treadmill stops by itself (its button, the safety key), the ramp is forgotten and `ended` is sent.
 6. No method throws during a session (only `connect`); a failed command returns `false` and sends a notice.
 
-The full API, the belt phases, every notice code and the reasons behind each rule are in
-[docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md).
+## Documentation
+
+- **[API reference](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/API.md)**: every function, option, event and notice code, each with an example, plus
+  recipes (a complete page, a workout, tests without a treadmill, your own Bluetooth adapter).
+- **[Design](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md)**: why it works the way it does: belt phases, standstill, the limit above 6 km/h, the
+  promises above and how releases are made.
+- **[Example in Node](https://github.com/walkflow-app/ftms-treadmill/blob/main/examples/simulator.ts)**: drives the simulator from start to stop (`npm run example`).
 
 ## Develop
 
 ```sh
 npm ci
 npm run typecheck && npm test && npm run build
+npm run check:docs   # every example in the docs compiles
+npm run example      # drives the simulator from start to stop
 ```
 
 Commit titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`safety:`, `feat:`, `fix:`, …); they
