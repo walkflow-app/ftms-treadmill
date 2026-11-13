@@ -289,6 +289,99 @@ describe('the treadmill stops by itself (promise 7)', () => {
   });
 });
 
+describe('ended comes once per run of the belt', () => {
+  /** A rig whose belt runs at 3 km/h after a start, with every ended reason recorded */
+  async function running() {
+    const r = await rig();
+    const reasons: string[] = [];
+    r.tm.on('ended', e => reasons.push(e.reason));
+    r.dev.speed(0);
+    await r.tm.start();
+    r.dev.speed(3);
+    return { ...r, reasons };
+  }
+
+  it.each([
+    ['stop', [0x02, 0x01]],
+    ['pause', [0x02, 0x02]],
+  ] as const)('%s, then the treadmill reporting it, is one ended', async (how, report) => {
+    const { tm, dev, reasons } = await running();
+    await (how === 'stop' ? tm.stop() : tm.pause());
+    dev.machineStatus(...report);
+    expect(reasons).toEqual([how]);
+  });
+
+  it('a raw stop, then the treadmill reporting it, is one ended', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.sendRaw([0x08, 0x01]);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['console']);
+  });
+
+  it('the treadmill stopping by itself still forgets the ramp after the app stopped', async () => {
+    const { tm, dev } = await running();
+    await tm.stop();
+    tm.setSpeed(4);
+    dev.machineStatus(0x02, 0x01);
+    expect(tm.state.target).toBeNull();
+  });
+
+  it('after a new start, the next end is told again', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.stop();
+    dev.speed(0);
+    await tm.start();
+    dev.speed(3);
+    dev.machineStatus(0x03);
+    expect(reasons).toEqual(['stop', 'safety-key']);
+  });
+
+  it('a belt started on the treadmill itself is a new run', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.stop();
+    dev.speed(0);
+    dev.machineStatus(0x04);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['stop', 'machine-stopped']);
+  });
+
+  it('a belt measured moving again after it stood is a new run, even without a Machine Status', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.stop();
+    dev.speed(0);
+    dev.speed(2.5);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['stop', 'machine-stopped']);
+  });
+
+  it('a belt that still slows down after a stop is not a new run', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.stop();
+    dev.speed(2);
+    dev.speed(1);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['stop']);
+  });
+
+  it('a program that starts after an end always gets its own end', async () => {
+    const { tm, dev, reasons } = await running();
+    await tm.stop();
+    tm.setProgramActive(true);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['stop', 'machine-stopped']);
+  });
+
+  it('a new connection is a new run', async () => {
+    const { tm, dev, adapter, reasons } = await running();
+    await tm.stop();
+    dev.disconnect();
+    await tm.connect(adapter);
+    dev.speed(3);
+    dev.machineStatus(0x02, 0x01);
+    expect(reasons).toEqual(['stop', 'machine-stopped']);
+  });
+});
+
 describe('incline', () => {
   it('is clamped to the range the treadmill reported', async () => {
     const { tm, dev } = await rig();

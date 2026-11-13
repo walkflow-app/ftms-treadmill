@@ -67,7 +67,7 @@ await tm.connect(new SimulatorAdapter());     // a simulated FTMS treadmill, als
 3. Before Start the lowest speed is set, so a treadmill does not jump back to the speed it last had.
 4. Stop and Pause go out ahead of everything queued, and are sent up to 3 times. If none got through, `state.stopFailed`
    is true and the `stopFailed` event says so.
-5. When the treadmill stops by itself (its button, the safety key), the ramp is forgotten and `ended` is sent.
+5. When the treadmill stops by itself (its button, the safety key), the ramp is forgotten and `ended` is sent (once per run of the belt).
 6. No method throws during a session (only `connect`); a failed command returns `false` and sends a notice.
 
 ## Documentation
