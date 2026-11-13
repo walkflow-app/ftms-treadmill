@@ -70,7 +70,19 @@ await tm.connect(new SimulatorAdapter());     // a simulated FTMS treadmill, als
 6. No method throws during a session (only `connect`); a failed command returns `false` and sends a notice.
 
 The full API, the belt phases, every notice code and the reasons behind each rule are in
-[docs/LIBRARY.md](https://github.com/walkflow-app/walkflow/blob/main/docs/LIBRARY.md).
+[docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md).
+
+## Develop
+
+```sh
+npm ci
+npm run typecheck && npm test && npm run build
+```
+
+Commit titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`safety:`, `feat:`, `fix:`, …); they
+make the version and the changelog. Code that decides what is sent to the treadmill (`src/device/treadmill.ts`,
+`src/device/belt-commands.ts`, `src/safety/`) changes test first, and a release with such a change is checked on a real
+treadmill before it is published. How releases work: [docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md#packaging).
 
 ## License
 

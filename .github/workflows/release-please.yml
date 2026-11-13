@@ -1,0 +1,24 @@
+name: Release Please
+
+# On every push to main, release-please keeps a release pull request up to date: next version (SemVer, from the
+# Conventional Commit titles) and CHANGELOG.md. Merging it creates the tag (v<version>) and a draft release. The draft is
+# published by hand after the hardware checks; publishing it publishes the package to npm (npm-publish.yml).
+# Config: release-please-config.json, current version: .release-please-manifest.json.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

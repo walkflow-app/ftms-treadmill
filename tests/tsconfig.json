@@ -1,0 +1,8 @@
+{
+  // The repository's own tests (tests/), which read the source files with Node; the library itself never sees Node's types
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["."]
+}

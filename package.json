@@ -13,14 +13,13 @@
     "web-bluetooth",
     "fitness-machine"
   ],
-  "homepage": "https://github.com/walkflow-app/walkflow/tree/main/packages/ftms-treadmill#readme",
+  "homepage": "https://github.com/walkflow-app/ftms-treadmill#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/walkflow-app/walkflow.git",
-    "directory": "packages/ftms-treadmill"
+    "url": "git+https://github.com/walkflow-app/ftms-treadmill.git"
   },
   "bugs": {
-    "url": "https://github.com/walkflow-app/walkflow/issues"
+    "url": "https://github.com/walkflow-app/ftms-treadmill/issues"
   },
   "exports": {
     ".": {
@@ -50,11 +49,19 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/fix-dts.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/web-bluetooth": "0.0.22",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   }
 }

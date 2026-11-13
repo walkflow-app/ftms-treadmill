@@ -1,0 +1,47 @@
+name: Publish to npm
+
+# Publishes the package to npm when its release is published. release-please makes the release as a draft (tag
+# v<version>); publishing that draft by hand, after the hardware checks, starts this workflow.
+# No token: npm trusts this workflow (Trusted Publishing, set on npmjs.com for ftms-treadmill: repository
+# walkflow-app/ftms-treadmill, workflow npm-publish.yml) and checks the OIDC token GitHub gives the job (id-token: write).
+# npm adds provenance by itself, so npm shows which commit and workflow built the package.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Tag matches the version of the package?
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match version $version"
+            exit 1
+          fi
+
+      - run: npm run build
+      # Trusted Publishing needs npm 11.5.1 or later
+      - run: npm install -g npm@^11.5.1
+      - run: npm publish --access public

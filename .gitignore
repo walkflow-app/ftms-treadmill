@@ -1,0 +1,7 @@
+*.log
+.DS_Store
+.claude/
+coverage/
+dist/
+node_modules/
+*.tgz
