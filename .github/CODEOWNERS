@@ -1,0 +1,12 @@
+# Who has to look at what. Today one maintainer owns everything; the explicit lines mark what must never be merged
+# without a human review (what is sent to the treadmill, the release pipeline, the agent setup), for when agents open
+# pull requests.
+*                               @caenderl
+
+src/device/treadmill.ts         @caenderl
+src/device/belt-commands.ts     @caenderl
+src/safety/                     @caenderl
+docs/LIBRARY.md                 @caenderl
+.github/                        @caenderl
+CLAUDE.md                       @caenderl
+.claude/                        @caenderl
