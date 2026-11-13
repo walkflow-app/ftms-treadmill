@@ -94,7 +94,8 @@ treadmill before it is published. How releases work: [docs/LIBRARY.md](https://g
 
 ## Support
 
-If the library is useful to you, you can support it through [thanks.dev](https://thanks.dev/u/gh/walkflow-app).
+If the library is useful to you, you can support it through [thanks.dev](https://thanks.dev/u/gh/walkflow-app) or
+[Ko-fi](https://ko-fi.com/walkflowapp).
 
 ## License
 
