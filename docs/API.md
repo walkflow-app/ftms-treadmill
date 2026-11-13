@@ -388,7 +388,7 @@ off();
 | `controlResponse` | [`ControlPointResponse`](#controlpointresponse) | every answer to a command, also an OK |
 | `notice` | [`Notice`](#notices) | something worth telling the person or a log |
 | `log` | `string` | protocol lines (bytes sent, an answer that could not be read); not for people |
-| `ended` | `{ reason: EndReason }` | the belt was stopped, or stopped by itself: end your program |
+| `ended` | `{ reason: EndReason }` | the belt was stopped, or stopped by itself: end your program (once per run, see [`EndReason`](#endreason)) |
 | `stopFailed` | `boolean` | a Stop or Pause did not get through (`true`), or later did (`false`) |
 | `phase` | `BeltPhase` | after a start or stop request, after connecting; `state.belt` also moves with time |
 | `target` | `undefined` | target, last command or ramp changed |
@@ -419,8 +419,10 @@ tm.on('disconnected', e => { if (e.wasRunning) alert('Connection lost. The belt 
 | `safety-key` | the safety key was pulled |
 | `standstill` | it stood still for 8 s while a program wanted it to move ([Standstill](LIBRARY.md#standstill)) |
 
-One stop can bring `ended` more than once: your `stop()` sends `'stop'`, and when the treadmill then reports that it
-stopped, `'machine-stopped'` follows. End your program on the first one and ignore the rest.
+`ended` comes **once per run of the belt**: your `stop()` sends `'stop'`, and when the treadmill then reports that it
+stopped, no second `ended` follows (the `machineStatus` event still does). A new run starts with `start()`, a raw Start,
+a start on the treadmill itself, the belt measured moving again after it stood, `setProgramActive(true)` or a new
+connection; its end is told again. So a program you start always hears about its end.
 
 #### `CommandSource`
 

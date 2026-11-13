@@ -135,7 +135,9 @@ one of them is a `safety` commit and at least a minor version.
 5. A refused Stop on a moving belt sets `stopFailed`; a refused speed ends the ramp.
 6. A write that gets no answer is given up after `WRITE_TIMEOUT_MS`, so it cannot hold back a Stop.
 7. When the treadmill stops by itself (button, safety key) or the belt stands still while a speed is wanted (see
-   [Standstill](#standstill)), the ramp is forgotten and `ended` is sent.
+   [Standstill](#standstill)), the ramp is forgotten and `ended` is sent. `ended` comes once per run of the belt: the
+   treadmill reporting a stop the app already made forgets the ramp again but tells no second end; a start, the belt
+   moving again, a program that begins or a new connection opens a new run.
 8. No method throws during a session (only `connect`); a failed command is `false` plus a notice.
 
 ## Packaging
