@@ -162,6 +162,13 @@ one of them is a `safety` commit and at least a minor version.
   Publishing it starts `.github/workflows/npm-publish.yml`: tests, a check that the tag matches the version, the build,
   `npm publish` with provenance. No token: npm trusts that workflow (Trusted Publishing, set in the package settings on
   npmjs.com: GitHub Actions, `walkflow-app/ftms-treadmill`, `npm-publish.yml`, no environment).
+- **Static analysis:** `npm run lint` runs [oxlint](https://oxc.rs/docs/guide/usage/linter) with type information
+  (`--type-aware`, built on TypeScript 7, which typescript-eslint cannot use) and [knip](https://knip.dev) (unused
+  files, exports and dependencies), in CI. The rules are in `.oxlintrc.json`; above all no promise may be left
+  unhandled (a forgotten `await` on `stop()`). A rule that is wrong for one line is switched off on that line with the
+  reason (`oxlint-disable-next-line … -- why`), for example the epoch checks in `belt-commands.ts`, which other calls
+  change while one awaits. GitHub's CodeQL (default setup, extended queries) checks the code and the workflows for
+  security problems on every push and pull request.
 - **Documentation:** the `Treadmill` interface, its options, state and events describe every member in a comment that
   editors show (`tests/docs.test.ts` checks it). [API.md](API.md) covers every export (`tests/docs.test.ts` fails when something new is not in it),
   and every `ts` example in it and in the README compiles against the sources (`npm run check:docs`, in CI).

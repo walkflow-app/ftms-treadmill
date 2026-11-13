@@ -54,7 +54,8 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run build",
     "check:docs": "node scripts/check-docs.mjs",
-    "example": "npm run build && node examples/simulator.ts"
+    "example": "npm run build && node examples/simulator.ts",
+    "lint": "oxlint --type-aware --deny-warnings && knip"
   },
   "publishConfig": {
     "access": "public",
@@ -63,6 +64,9 @@
   "devDependencies": {
     "@types/node": "24.19.2",
     "@types/web-bluetooth": "0.0.22",
+    "knip": "6.45.1",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2007",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

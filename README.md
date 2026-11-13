@@ -82,7 +82,7 @@ await tm.connect(new SimulatorAdapter());     // a simulated FTMS treadmill, als
 
 ```sh
 npm ci
-npm run typecheck && npm test && npm run build
+npm run typecheck && npm run lint && npm test && npm run build
 npm run check:docs   # every example in the docs compiles
 npm run example      # drives the simulator from start to stop
 ```
