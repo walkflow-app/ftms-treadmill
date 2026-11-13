@@ -42,6 +42,14 @@ npm run example                                                  # drives the si
   `npm-publish.yml`, which publishes through npm Trusted Publishing (no token). Ask the maintainer before publishing a draft
   that contains `safety` or Bluetooth changes.
 
+## How work is done here
+
+- **New API or behaviour starts as a spec** (skill `write-spec`, in `docs/specs/`); code starts once the maintainer set it
+  to `accepted`.
+- **Before opening a pull request**: agent `safety-reviewer` for anything in `src/device/`, `src/safety/` or `src/protocol/`;
+  agent `api-reviewer` for anything exported or documented in docs/API.md. Fix what they find, or say in the pull request why not.
+- **"release"**: skill `release` (stops before publishing safety changes; brings the new version into the app afterwards).
+
 ## Never without being asked
 
 Run `npm publish`, force-push, merge with `--admin`, change repository settings, rulesets, secrets or the Trusted Publisher,
