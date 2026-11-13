@@ -428,16 +428,16 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     sendRaw,
     get state(): TreadmillState {
       const t = now();
-      const belt = tracker.phase(t);
+      const beltPhase = tracker.phase(t);
       return {
         connected: session.connected(),
-        belt,
+        belt: beltPhase,
         controls: controlAvailability({
           connected: session.connected(),
           measuredKmh: session.lastMeasured,
           measuredAgeMs: t - session.lastMeasuredAt,
           startedByApp: session.beltStarted,
-          startingNow: belt === 'starting',
+          startingNow: beltPhase === 'starting',
           programActive,
         }),
         maybeRunning: session.maybeRunning(),

@@ -1,0 +1,18 @@
+# Keeps the pinned GitHub Actions (by commit, see CodeQL's actions/unpinned-tag) and the dev dependencies up to date.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+    groups:
+      dev-dependencies:
+        dependency-type: development

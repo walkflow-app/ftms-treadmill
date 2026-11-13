@@ -66,6 +66,8 @@ export function setupBelt(host: BeltHost) {
       if (epoch !== mine || session.client !== c || !c.connected) return false;
       if (attempt >= STOP_ATTEMPTS) break;
       await host.wait(STOP_RETRY_MS);
+      // A newer start, stop or pause and a lost connection happen during the wait; TypeScript does not see that
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- changed by other calls while awaiting
       if (epoch !== mine || session.client !== c || !c.connected) return false;
     }
     host.stopFailed(true);
@@ -105,7 +107,7 @@ export function setupBelt(host: BeltHost) {
     if (b) {
       session.beltStarted = true;
       phase.startRequested(host.now());
-      if (chosen !== null && chosen !== undefined) governor.request(chosen);
+      if (chosen !== null) governor.request(chosen);
     }
     return a && b;
   }

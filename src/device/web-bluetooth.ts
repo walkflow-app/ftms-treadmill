@@ -81,6 +81,8 @@ class WebBluetoothDevice implements BleDevice {
   async write(service: Uuid, characteristic: Uuid, data: Uint8Array) {
     const c = await this.characteristic(service, characteristic);
     const buf = data.slice().buffer;
+    // Older browsers have only writeValue, although the types always promise writeValueWithResponse
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- missing at runtime in older browsers
     if (c.writeValueWithResponse) await c.writeValueWithResponse(buf);
     else await c.writeValue(buf);
   }
@@ -90,8 +92,11 @@ export class WebBluetoothAdapter implements BleAdapter {
   readonly kind = 'web-bluetooth';
 
   async availability(): Promise<BleAvailability> {
+    // The types promise navigator.bluetooth everywhere; Firefox, Safari and Node have none, and getAvailability is optional
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- missing at runtime outside Chromium
     if (typeof navigator === 'undefined' || !navigator.bluetooth) return { ok: false, reason: 'no-api' };
     try {
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- optional in some Chromium versions
       if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability())) {
         return { ok: false, reason: 'no-adapter' };
       }
