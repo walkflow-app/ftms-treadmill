@@ -6,6 +6,7 @@ interface, no storage and no texts of its own. You draw the buttons; it drives t
 
 It is the treadmill control of [Walkflow](https://github.com/walkflow-app/walkflow), tested on real treadmills (a sPad 500
 so far). Version 0.x: the API may still change in a minor version. Each change is listed in the changelog.
+Up to 0.1.1 it lived in Walkflow's repository; since 0.1.2 it has [its own](https://github.com/walkflow-app/ftms-treadmill).
 
 > **Use at your own risk.** A treadmill can hurt people. This library makes mistakes less likely, it does not make them
 > impossible. Always keep the treadmill's own stop and safety key within reach. Not affiliated with any treadmill maker.
