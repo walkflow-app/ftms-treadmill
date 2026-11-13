@@ -91,6 +91,8 @@ Commit titles follow [Conventional Commits](https://www.conventionalcommits.org/
 make the version and the changelog. Code that decides what is sent to the treadmill (`src/device/treadmill.ts`,
 `src/device/belt-commands.ts`, `src/safety/`) changes test first, and a release with such a change is checked on a real
 treadmill before it is published. How releases work: [docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md#packaging).
+`main` takes changes only through pull requests with CI green. Rules for AI agents are in `CLAUDE.md`, the commands they may
+run in `.claude/settings.json`.
 
 ## Support
 

@@ -1,6 +1,7 @@
 *.log
 .DS_Store
-.claude/
+.claude/worktrees/
+.claude/settings.local.json
 coverage/
 dist/
 node_modules/
