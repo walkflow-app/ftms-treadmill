@@ -39,6 +39,34 @@ function interfaceKeys(file: string, name: string): string[] {
   return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map(m => m[1]!);
 }
 
+/** Members of an interface that have no /** comment right above them (editors show these comments) */
+function undocumentedMembers(file: string, name: string): string[] {
+  const text = read(file);
+  const start = text.indexOf(`export interface ${name} {`);
+  if (start < 0) throw new Error(`no interface ${name} in ${file}`);
+  const body = text.slice(text.indexOf('{', start) + 1, text.indexOf('\n}', start));
+  const missing: string[] = [];
+  const lines = body.split('\n');
+  lines.forEach((line, i) => {
+    const m = line.match(/^ {2}(?:readonly )?(\w+)\??[(<:]/);
+    if (m && !lines[i - 1]?.trim().endsWith('*/')) missing.push(m[1]!);
+  });
+  return missing;
+}
+
+describe('comments for editors', () => {
+  it('describes every member of the Treadmill, its options, state and events', () => {
+    const missing = [
+      ...undocumentedMembers('src/device/treadmill.ts', 'Treadmill').map(m => `Treadmill.${m}`),
+      ...undocumentedMembers('src/device/treadmill.ts', 'TreadmillOptions').map(m => `TreadmillOptions.${m}`),
+      ...undocumentedMembers('src/device/treadmill.ts', 'TreadmillState').map(m => `TreadmillState.${m}`),
+      ...undocumentedMembers('src/device/treadmill.ts', 'TreadmillEventMap').map(m => `TreadmillEventMap.${m}`),
+      ...undocumentedMembers('src/device/ble.ts', 'ConnectResult').map(m => `ConnectResult.${m}`),
+    ];
+    expect(missing).toEqual([]);
+  });
+});
+
 describe('API reference', () => {
   it('documents every export of every entry point', () => {
     const names = [

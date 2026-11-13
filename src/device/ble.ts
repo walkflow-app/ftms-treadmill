@@ -110,11 +110,17 @@ export interface TreadmillEvents {
   disconnected(): void;
 }
 
+/** What Treadmill.connect found out about the treadmill */
 export interface ConnectResult {
+  /** The name the device advertises */
   deviceName: string | undefined;
+  /** Its FTMS features, if readable */
   features?: Features;
+  /** The speeds it accepts, km/h, if readable (until then 1–12 is assumed) */
   speedRange?: Range;
+  /** The inclines it accepts, %, if readable */
   inclRange?: Range;
+  /** It offers the Heart Rate service (heartRate events) */
   hasHeartRate: boolean;
 }
 

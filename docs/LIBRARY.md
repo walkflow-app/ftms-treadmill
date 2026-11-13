@@ -160,7 +160,8 @@ one of them is a `safety` commit and at least a minor version.
   Publishing it starts `.github/workflows/npm-publish.yml`: tests, a check that the tag matches the version, the build,
   `npm publish` with provenance. No token: npm trusts that workflow (Trusted Publishing, set in the package settings on
   npmjs.com: GitHub Actions, `walkflow-app/ftms-treadmill`, `npm-publish.yml`, no environment).
-- **Documentation:** [API.md](API.md) covers every export (`tests/docs.test.ts` fails when something new is not in it),
+- **Documentation:** the `Treadmill` interface, its options, state and events describe every member in a comment that
+  editors show (`tests/docs.test.ts` checks it). [API.md](API.md) covers every export (`tests/docs.test.ts` fails when something new is not in it),
   and every `ts` example in it and in the README compiles against the sources (`npm run check:docs`, in CI).
   `examples/simulator.ts` runs in CI after the build, against the built package.
 - **Version 0.x** until the API has been used for a while; then 1.0.

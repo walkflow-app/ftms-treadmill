@@ -82,7 +82,8 @@ const tm = createTreadmill({ clock });
 
 ## The treadmill
 
-`Treadmill` is what `createTreadmill` returns. No method throws once connected (only `connect` can); a command that fails
+`Treadmill` is what `createTreadmill` returns. Every method and field also carries a short description that editors show
+on hover. No method throws once connected (only `connect` can); a command that fails
 returns `false` or `null` and sends a [notice](#notices).
 
 ### Connecting
