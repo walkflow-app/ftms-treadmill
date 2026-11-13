@@ -5,7 +5,7 @@
 
 import { cmdRequestControl, cmdSetInclination, cmdSetSpeed, hex, OP, parseTrainingStatus, type ControlPointResponse, type MachineEvent, type Range, type TreadmillData } from '../protocol/ftms.ts';
 import type { ConsoleBlock, Notice } from '../protocol/notice.ts';
-import { BeltPhaseTracker, type BeltPhase } from '../safety/belt-phase.ts';
+import { BeltPhaseTracker, MOVING_KMH, type BeltPhase } from '../safety/belt-phase.ts';
 import { clampIncline, inclineSupport } from '../safety/incline.ts';
 import {
   checkConsoleCommand, controlAvailability, DEFAULT_MAX_STEP, DEFAULT_SPEED_LIMIT, LIMIT_CONFIRM_ABOVE, LIMIT_MAX, LIMIT_MIN,
@@ -98,7 +98,7 @@ export interface TreadmillEventMap {
   notice: Notice;
   /** Protocol lines (bytes sent, an answer that could not be read); not for people */
   log: string;
-  /** The belt was stopped or stopped by itself: a running program ends */
+  /** The belt was stopped or stopped by itself: a running program ends. Once per run of the belt (a stop and the treadmill reporting it are one) */
   ended: { reason: EndReason };
   /** true: a Stop or Pause did not get through, the person has to stop the belt on the treadmill; false: one did later */
   stopFailed: boolean;
@@ -165,7 +165,10 @@ export interface Treadmill {
    * limitConfirmed: true in the same call, otherwise LIMIT_CONFIRM_ABOVE is used and limit-unconfirmed is sent.
    */
   setLimits(limits: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void;
-  /** A workout or route of yours runs: Start stays locked meanwhile. false ends the standstill watch. End the program on ended. */
+  /**
+   * A workout or route of yours runs: Start stays locked meanwhile. false ends the standstill watch. End the program on
+   * ended; true starts a new run, so the program always hears about its end.
+   */
   setProgramActive(active: boolean): void;
   /**
    * Sends Control Point bytes as they are (an experiment console), after checking them against the limit, the step and
@@ -205,6 +208,19 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   let programActive = false;
   /** The last speed asked for; a stop forgets the target, the next Start ramps up to this again (what the app still shows) */
   let wanted: number | null = null;
+  /**
+   * The current run of the belt has been told to have ended. One end is told once: a stop and then the treadmill reporting
+   * that stop is one ended, not two. A new run opens it again: a start (by the app, raw or on the treadmill), the belt
+   * measured moving after it stood, a program that begins, a new connection. When in doubt it opens: an end told twice is
+   * harmless, an end not told would leave a program running.
+   */
+  let runEnded = false;
+  const newRun = () => { runEnded = false; };
+  function ended(reason: EndReason) {
+    if (runEnded) return;
+    runEnded = true;
+    emit('ended', { reason });
+  }
 
   /** A listener is the app's display: whatever it does, it never gets in the way of the control path */
   function emit<E extends keyof TreadmillEventMap>(event: E, payload: TreadmillEventMap[E]) {
@@ -229,7 +245,11 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const phase = {
     startRequested(at: number) { tracker.startRequested(at); emit('phase', tracker.phase(at)); },
     stopRequested(at: number) { tracker.stopRequested(at); emit('phase', tracker.phase(at)); },
-    speed(kmh: number, at: number) { tracker.speed(kmh, at); },
+    speed(kmh: number, at: number) {
+      tracker.speed(kmh, at);
+      // Moving while no stop is under way: the belt was started again (perhaps on the treadmill, without telling)
+      if (kmh >= MOVING_KMH && tracker.phase(at) === 'running') newRun();
+    },
   };
 
   function setStopFailed(failed: boolean) {
@@ -240,7 +260,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const belt = setupBelt({
     session, phase, governor, standstill, now,
     wanted: () => wanted,
-    ended: reason => emit('ended', { reason }),
+    ended,
     notice,
     wait: ms => clock.wait(ms),
     stopFailed: setStopFailed,
@@ -249,11 +269,14 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const reports = setupReports({
     session, phase, governor, standstill, now,
     programActive: () => programActive,
-    ended: reason => emit('ended', { reason }),
+    ended,
     stopFailed: setStopFailed,
     notice,
     data: d => emit('data', d),
-    machineStatus: s => emit('machineStatus', s),
+    machineStatus: s => {
+      if (s.event?.kind === 'started') newRun();
+      emit('machineStatus', s);
+    },
     controlResponse: r => emit('controlResponse', r),
   });
 
@@ -327,6 +350,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     governor.reset();
     applyRange();
     tracker.setConnected(true);
+    newRun();
     stopFailed = false;
     emit('phase', tracker.phase(now()));
     await client.send(cmdRequestControl());
@@ -355,12 +379,13 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     if (check.action === 'confirm-start') {
       if (!o.confirmed) return { action: 'needs-confirmation' };
       governor.reset();
+      newRun();
       const ok = await c.send(data);
       if (ok) session.beltStarted = true;
       return { action: 'sent', ok };
     }
     if (bytes[0] === OP.STOP_PAUSE && (bytes[1] === 0x01 || bytes[1] === 0x02)) {
-      emit('ended', { reason: 'console' });
+      ended('console');
       governor.reset();
       standstill.disarm();
       const ok = await c.send(data, { urgent: true });
@@ -374,7 +399,10 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   return {
     connect,
     disconnect() { session.client?.disconnect(); },
-    start: belt.start,
+    start() {
+      newRun();
+      return belt.start();
+    },
     stop: belt.stop,
     pause: belt.pause,
     setSpeed,
@@ -393,6 +421,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       applyRange();
     },
     setProgramActive(active: boolean) {
+      if (active && !programActive) newRun();
       programActive = active;
       if (!active) standstill.disarm();
     },
