@@ -24,23 +24,31 @@ export type CommandSource = 'program' | 'manual';
 /** Why the belt ended: asked for by the app (stop, pause, a raw stop in the console), or by itself */
 export type EndReason = 'stop' | 'pause' | 'console' | ReportedEnd;
 
+/** The time the treadmill uses for its timings; pass a fake one in tests */
 export interface Clock {
+  /** Milliseconds, monotonic (performance.now() by default) */
   now(): number;
+  /** Resolves after ms milliseconds */
   wait(ms: number): Promise<void>;
 }
 
+/** Options of createTreadmill */
 export interface TreadmillOptions {
-  /** km/h, LIMIT_MIN..LIMIT_MAX; above LIMIT_CONFIRM_ABOVE only with limitConfirmed */
+  /** The highest speed ever sent, km/h, LIMIT_MIN..LIMIT_MAX (default DEFAULT_SPEED_LIMIT); above LIMIT_CONFIRM_ABOVE only with limitConfirmed */
   speedLimit?: number;
-  /** A person confirmed a limit above LIMIT_CONFIRM_ABOVE; belongs to the speedLimit it is given with */
+  /** A person confirmed a limit above LIMIT_CONFIRM_ABOVE; belongs to the speedLimit it is given with (default false) */
   limitConfirmed?: boolean;
-  /** km/h per command while ramping */
+  /** km/h per command while ramping, MAX_STEP_MIN..MAX_STEP_MAX (default DEFAULT_MAX_STEP) */
   maxStep?: number;
+  /** For tests: the time the treadmill uses (default real time) */
   clock?: Clock;
 }
 
+/** A snapshot of the treadmill (Treadmill.state) */
 export interface TreadmillState {
+  /** Connected to a treadmill */
   connected: boolean;
+  /** What the belt does */
   belt: BeltPhase;
   /** Which buttons may be used now. Stop is there whenever the treadmill is connected. */
   controls: { start: boolean; pause: boolean; stop: boolean };
@@ -50,41 +58,59 @@ export interface TreadmillState {
   lastMeasured: number | undefined;
   /** Where the ramp is going */
   target: number | null;
+  /** The last speed sent, and when (clock time) */
   lastCommand: { kmh: number; at: number } | null;
+  /** A ramp is under way */
   ramping: boolean;
+  /** The limit in force, km/h */
   speedLimit: number;
+  /** The limit above LIMIT_CONFIRM_ABOVE was confirmed */
   limitConfirmed: boolean;
+  /** km/h per command while ramping */
   maxStep: number;
   /** What the treadmill reported (defaults before it did) */
   deviceRange: { min: number; max: number };
   /** The highest speed that is ever sent: the device maximum, capped by the limit */
   effectiveMax: number;
+  /** The incline range the treadmill reported */
   inclineRange: Range | null;
+  /** The treadmill gave control away; the next Start or Stop asks for it again */
   controlLost: boolean;
   /** A Stop or Pause did not get through while connected: the person has to stop the belt on the treadmill */
   stopFailed: boolean;
+  /** What setProgramActive said */
   programActive: boolean;
 }
 
+/** The events of Treadmill.on and what each one carries */
 export interface TreadmillEventMap {
+  /** What the treadmill reports, about once a second */
   data: TreadmillData;
+  /** Beats per minute from the Heart Rate service */
   heartRate: number;
+  /** The treadmill reported a change (stopped, safety key, control lost, …) */
   machineStatus: { event: MachineEvent | null; hex: string };
+  /** The treadmill's training status (e.g. 'Pre-Workout') */
   trainingStatus: { hex: string; status: number | null; text: string | null };
+  /** Every answer of the treadmill to a command, also an OK (result 1) */
   controlResponse: ControlPointResponse;
+  /** Something to tell the person or a log, as a code: turn it into words in your language */
   notice: Notice;
   /** Protocol lines (bytes sent, an answer that could not be read); not for people */
   log: string;
   /** The belt was stopped or stopped by itself: a running program ends */
   ended: { reason: EndReason };
+  /** true: a Stop or Pause did not get through, the person has to stop the belt on the treadmill; false: one did later */
   stopFailed: boolean;
   /** The belt phase may have changed because of a command or a report (it also changes with time: read state.belt) */
   phase: BeltPhase;
   /** Target, last command or ramp changed */
   target: undefined;
+  /** The connection is gone; wasRunning: the belt may still be moving */
   disconnected: { wasRunning: boolean };
 }
 
+/** What Treadmill.sendRaw did */
 export type RawResult =
   | { action: 'not-connected' }
   | { action: 'blocked'; reason: ConsoleBlock }
@@ -92,6 +118,68 @@ export type RawResult =
   | { action: 'sent'; ok: boolean };
 
 type Listener<E extends keyof TreadmillEventMap> = (e: TreadmillEventMap[E]) => void;
+
+/**
+ * One treadmill: the connection, what is known about the belt, and everything that drives it. Made by createTreadmill.
+ * No method throws once connected (only connect can); a command that fails returns false or null and sends a notice.
+ * Speeds in km/h, incline in percent. Every part with an example: docs/API.md.
+ */
+export interface Treadmill {
+  /**
+   * Asks the adapter for a device (Web Bluetooth: the browser's picker, so call it from a click), connects, reads what the
+   * treadmill can do and asks for control. Again while connected: the same result.
+   * @throws the adapter's error when no device was chosen or it has no FTMS service
+   */
+  connect(adapter: BleAdapter): Promise<ConnectResult>;
+  /** Ends the connection; disconnected follows. Does not stop the belt: stop first if it may be running. */
+  disconnect(): void;
+  /**
+   * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for.
+   * @returns false if a command failed, or a Stop or Pause came in meanwhile (then nothing more of it is sent)
+   */
+  start(): Promise<boolean>;
+  /**
+   * Stops the belt: ends the ramp and a running program (ended), sends Stop ahead of everything queued, and again up to
+   * STOP_ATTEMPTS times. Always allowed while connected.
+   * @returns false if it did not get through; then state.stopFailed is true and the person has to stop the belt on the treadmill
+   */
+  stop(): Promise<boolean>;
+  /** Like stop, with Pause (the treadmill keeps distance and time); start resumes at the speed before. */
+  pause(): Promise<boolean>;
+  /**
+   * The speed to go to. Reached in steps of at most maxStep, one every RAMP_INTERVAL_MS, only while the belt moves; held
+   * until it does. Never above state.effectiveMax.
+   * @param options.source 'program' for a workout or route (watched for a belt that stands still), 'manual' (default) for the person
+   * @returns the target it ramps to, or null if not connected or no speed is allowed
+   */
+  setSpeed(kmh: number, options?: { source?: CommandSource }): number | null;
+  /** setSpeed relative to the current target (or the speed last sent), for + and − buttons. */
+  changeSpeed(deltaKmh: number, options?: { source?: CommandSource }): number | null;
+  /**
+   * Sets the incline, clamped to the treadmill's range and rounded to 0.1 %.
+   * @returns false if the treadmill cannot set an incline, pct is not a number or the command failed
+   */
+  setIncline(pct: number): Promise<boolean>;
+  /**
+   * Changes the limit or the ramp step. Lowering takes effect at once. A limit above LIMIT_CONFIRM_ABOVE needs
+   * limitConfirmed: true in the same call, otherwise LIMIT_CONFIRM_ABOVE is used and limit-unconfirmed is sent.
+   */
+  setLimits(limits: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void;
+  /** A workout or route of yours runs: Start stays locked meanwhile. false ends the standstill watch. End the program on ended. */
+  setProgramActive(active: boolean): void;
+  /**
+   * Sends Control Point bytes as they are (an experiment console), after checking them against the limit, the step and
+   * the interval. A raw Start needs confirmed: true.
+   */
+  sendRaw(bytes: number[], options?: { confirmed?: boolean }): Promise<RawResult>;
+  /** A fresh snapshot each time it is read: read it when you draw. */
+  readonly state: TreadmillState;
+  /**
+   * Listens to an event. A listener that throws is reported a moment later and never gets in the way of a Stop.
+   * @returns the function that removes the listener
+   */
+  on<E extends keyof TreadmillEventMap>(event: E, listener: (payload: TreadmillEventMap[E]) => void): () => void;
+}
 
 /** Before the treadmill says otherwise */
 const DEFAULT_DEVICE_RANGE = { min: 1.0, max: 12.0 };
@@ -101,7 +189,8 @@ const realClock: Clock = {
   wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
 };
 
-export function createTreadmill(opts: TreadmillOptions = {}) {
+/** Makes a treadmill. It is not connected yet: give it an adapter with connect. Keeps its limits across connections. */
+export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const clock = opts.clock ?? realClock;
   const now = () => clock.now();
   const session = new BeltState();
@@ -346,5 +435,3 @@ export function createTreadmill(opts: TreadmillOptions = {}) {
     },
   };
 }
-
-export type Treadmill = ReturnType<typeof createTreadmill>;

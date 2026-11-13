@@ -11,6 +11,7 @@ export const STANDING_KMH = 0.1;
 /** A stop that is not confirmed by the speed (nothing reported) is dropped after this */
 export const STOP_MAX_MS = 20_000;
 
+/** What the belt does: unknown (nothing reported yet), standing, starting (Start sent, not moving yet), running, stopping */
 export type BeltPhase = 'unknown' | 'standing' | 'starting' | 'running' | 'stopping';
 
 export class BeltPhaseTracker {
