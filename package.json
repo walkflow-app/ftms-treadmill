@@ -18,6 +18,7 @@
     "type": "git",
     "url": "git+https://github.com/walkflow-app/ftms-treadmill.git"
   },
+  "funding": "https://thanks.dev/u/gh/walkflow-app",
   "bugs": {
     "url": "https://github.com/walkflow-app/ftms-treadmill/issues"
   },

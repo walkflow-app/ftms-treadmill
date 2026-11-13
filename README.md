@@ -92,6 +92,10 @@ make the version and the changelog. Code that decides what is sent to the treadm
 `src/device/belt-commands.ts`, `src/safety/`) changes test first, and a release with such a change is checked on a real
 treadmill before it is published. How releases work: [docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md#packaging).
 
+## Support
+
+If the library is useful to you, you can support it through [thanks.dev](https://thanks.dev/u/gh/walkflow-app).
+
 ## License
 
 MIT
