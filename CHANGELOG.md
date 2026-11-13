@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/walkflow-app/ftms-treadmill/compare/v0.2.0...v0.2.1) (2026-11-13)
+
+
+### Chores
+
+* release 0.2.1 ([dc77f23](https://github.com/walkflow-app/ftms-treadmill/commit/dc77f238b90aef752aef89810787e370e824a265))
+
 ## [0.2.0](https://github.com/walkflow-app/ftms-treadmill/compare/v0.1.2...v0.2.0) (2026-11-13)
 
 
