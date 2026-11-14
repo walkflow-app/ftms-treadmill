@@ -76,7 +76,7 @@ remote or the safety key without a Machine Status). Then it forgets the ramp, so
 
 The API only says **where a speed came from** (`source`), never whether the standstill is watched: that is the library's
 decision and can change without a new API. In 0.x it does what the app does today and watches only speeds with
-`source: 'program'`. Watching every speed while the belt should run is planned as a `safety` change of its own after that,
+`source: 'program'`, and only while `setProgramActive(true)` is set. Watching every speed while the belt should run is planned as a `safety` change of its own after that,
 tested on a real treadmill; the app does not have to change for it.
 
 ### Notices instead of texts

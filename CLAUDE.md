@@ -18,8 +18,9 @@ the app first: `npm run build` here, `npm link ../ftms-treadmill` in the app.
 ## Rules
 
 - **The promises in docs/LIBRARY.md → *What the library promises* are the contract.** Each has a test. Code that decides what
-  is sent (`src/device/treadmill.ts`, `src/device/belt-commands.ts`, `src/safety/`) changes **test first**, and must not
-  weaken a limit, a delay or a stop. Changing a promise is a `safety` commit and at least a minor version.
+  is sent (`src/safety/`, `src/protocol/`, `src/device/treadmill.ts`, `belt-commands.ts`, `ble.ts`, `reports.ts`,
+  `belt-state.ts`) changes **test first**, and must not weaken a limit, a delay or a stop. Changing a promise is a `safety`
+  commit and at least a minor version.
 - **The API is a contract too.** Avoid options and names that would have to break later; when unsure, propose in an issue
   or a pull request description before building. Every public change goes into docs/API.md with an example
   (`npm run check:docs` compiles them).
