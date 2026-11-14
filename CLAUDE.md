@@ -4,9 +4,9 @@ This library decides what is sent to a real treadmill that a person is standing 
 [docs/LIBRARY.md](docs/LIBRARY.md) (design, the promises, packaging, releases) and [docs/API.md](docs/API.md) before changing
 code; this file only adds what an agent tends to miss.
 
-
 Planning for all walkflow-app repositories (roadmap, specs across repositories, decisions) is in
 [walkflow-app/meta](https://github.com/walkflow-app/meta), cloned next to this repository as `../meta`.
+
 ## Where it is used
 
 The app [walkflow-app/walkflow](https://github.com/walkflow-app/walkflow) (cloned next to this repository as `../walkflow`)
