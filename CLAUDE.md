@@ -42,7 +42,7 @@ npm run example                                                  # drives the si
 
 - One branch and one pull request per change, from `main`; avoid stacked pull requests. The title becomes the squash commit
   and must be a Conventional Commit (`safety`, `feat`, `fix`, …); release-please makes the version and the changelog from it.
-- `main` takes changes only through pull requests with CI (`test`) green.
+- `main` takes changes only through pull requests with CI (`test` and `safety-gate`) green.
 - Merging the release pull request creates the tag `v<version>` and a draft release. Publishing the draft runs
   `npm-publish.yml`, which publishes through npm Trusted Publishing (no token). Ask the maintainer before publishing a draft
   that contains `safety` or Bluetooth changes.
