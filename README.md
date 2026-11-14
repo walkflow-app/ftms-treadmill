@@ -102,6 +102,10 @@ Every new pull request gets a review by AI agents (`.github/workflows/agent-revi
 over an issue with the label `agent-ready` (`.github/workflows/claude.yml`); agents never take on issues labelled `safety` and
 never merge. Pull requests from forks are not reviewed by agents.
 
+Once a month `docs-check.yml` has an agent read README.md, docs/LIBRARY.md and docs/API.md against the code and list what is
+no longer true in an issue "Docs out of date"; it changes no code. Dependabot keeps the GitHub Actions and the dev
+dependencies current once a month.
+
 ## Roadmap
 
 What is being done on the library, what comes next and what may come later: [ROADMAP.md](ROADMAP.md).
