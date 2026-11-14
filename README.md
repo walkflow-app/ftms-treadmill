@@ -88,8 +88,8 @@ npm run example      # drives the simulator from start to stop
 ```
 
 Commit titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`safety:`, `feat:`, `fix:`, …); they
-make the version and the changelog. Code that decides what is sent to the treadmill (`src/device/treadmill.ts`,
-`src/device/belt-commands.ts`, `src/safety/`) changes test first (the CI job `safety-gate` fails a pull request that
+make the version and the changelog. Code that decides what is sent to the treadmill (`src/safety/`, `src/protocol/`, and
+`treadmill.ts`, `belt-commands.ts`, `ble.ts`, `reports.ts` and `belt-state.ts` in `src/device/`) changes test first (the CI job `safety-gate` fails a pull request that
 changes it without changing a test), and a release with such a change is checked on a real
 treadmill before it is published. How releases work: [docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md#packaging).
 `main` takes changes only through pull requests with CI green. Rules for AI agents are in `CLAUDE.md`, the commands they may

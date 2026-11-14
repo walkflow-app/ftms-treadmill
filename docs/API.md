@@ -201,7 +201,7 @@ belt moves. Before Start, or while the belt still stands, the speed is held (`sp
 once it moves.
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
-speed is watched for a belt that stands still ([Standstill](LIBRARY.md#standstill)).
+speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).
 
 ```ts
 const target = tm.setSpeed(4.2);
@@ -482,7 +482,7 @@ tm.on('notice', n => console.log(noticeText(n)));
 | `write-failed` | `error`: a [`TreadmillErrorCode`](#treadmillerror) or `{ message }` | a command did not go through |
 | `no-allowed-speed` | `min`, `max` | the limit is below the treadmill's lowest speed: nothing can be sent |
 | `speed-held-until-moving` | `kmh` | the speed is held until the belt moves |
-| `ramp-aborted` | | the ramp ended (the treadmill refused a step, the belt stopped) |
+| `ramp-aborted` | | a speed command of the ramp could not be written; the ramp ended (a speed the treadmill refuses is `speed-refused`) |
 | `start-speed-failed` | | the lowest speed could not be set before Start (Start is sent anyway) |
 | `speed-refused` | | the treadmill refused a speed |
 | `limit-lowered` | `kmh` | the target came down to a lowered limit |
@@ -900,6 +900,7 @@ it('never sends more than the limit', async () => {
 
 ### Node
 
-The core and the simulator run in Node 20 or later; try it with
-[`examples/simulator.ts`](../examples/simulator.ts) (`node examples/simulator.ts` after `npm run build`). For a real
+The core and the simulator run in Node 20 or later; try them with
+[`examples/simulator.ts`](../examples/simulator.ts) (`npm run example`, which builds first; running the `.ts` file as it is
+needs Node 22.18 or later). For a real
 treadmill in Node, write an [adapter](#your-own-adapter) for a Bluetooth library such as `@abandonware/noble`.
