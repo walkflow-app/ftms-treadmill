@@ -7,7 +7,7 @@ code; this file only adds what an agent tends to miss.
 [ROADMAP.md](ROADMAP.md) is the public plan of this repository; only the maintainer moves something into *Now*, and a pull
 request that finishes or drops a roadmap item updates it. Internal planning (specs across repositories, decisions) is in the
 private repository `walkflow-app/meta`, cloned next to this one as `../meta`; never copy internal notes from there into this
-public repository.
+public repository without the maintainer agreeing.
 
 ## Where it is used
 

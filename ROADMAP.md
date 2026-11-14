@@ -4,7 +4,7 @@ What is being done on `ftms-treadmill`, what comes next, and what may come later
 *Now*. The app that uses it has [its own roadmap](https://github.com/walkflow-app/walkflow/blob/main/ROADMAP.md). Last updated:
 2026-11-14.
 
-State: [0.2.1](https://github.com/walkflow-app/ftms-treadmill/releases) on npm; Walkflow 0.7.1 uses 0.2.0. Checked on a
+State: [0.2.1](https://github.com/walkflow-app/ftms-treadmill/releases/tag/v0.2.1) on npm; Walkflow 0.7.1 uses 0.2.0. Checked on a
 Sportstech sPad 500.
 
 ## Now
@@ -24,5 +24,6 @@ Nothing in progress.
 
 ## Done recently
 
-- 2026-11-13: 0.2.0 and 0.2.1: `ended` comes once per run of the belt; own repository, published through npm Trusted Publishing.
+- 2026-11-13: 0.1.2 from its own repository, published through npm Trusted Publishing; 0.2.0 (`safety`, breaking): `ended`
+  comes once per run of the belt; 0.2.1.
 - 2026-11-12: 0.1.0, the treadmill control of Walkflow as a library.
