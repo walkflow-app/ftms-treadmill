@@ -28,3 +28,20 @@ jobs:
       - run: node examples/simulator.ts
       # Packs only what it should (dist without tests, README, LICENSE, CHANGELOG)
       - run: npm pack --dry-run
+
+  # Code that decides what is sent to the belt (src/safety/, src/protocol/, the belt code in src/device/) changes only
+  # together with a test (scripts/safety-gate.mjs)
+  safety-gate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node scripts/safety-gate.mjs "origin/$BASE_REF" "$TITLE"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
