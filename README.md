@@ -89,10 +89,18 @@ npm run example      # drives the simulator from start to stop
 
 Commit titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`safety:`, `feat:`, `fix:`, …); they
 make the version and the changelog. Code that decides what is sent to the treadmill (`src/device/treadmill.ts`,
-`src/device/belt-commands.ts`, `src/safety/`) changes test first, and a release with such a change is checked on a real
+`src/device/belt-commands.ts`, `src/safety/`) changes test first (the CI job `safety-gate` fails a pull request that
+changes it without changing a test), and a release with such a change is checked on a real
 treadmill before it is published. How releases work: [docs/LIBRARY.md](https://github.com/walkflow-app/ftms-treadmill/blob/main/docs/LIBRARY.md#packaging).
 `main` takes changes only through pull requests with CI green. Rules for AI agents are in `CLAUDE.md`, the commands they may
 run in `.claude/settings.json`, their skills (release, specs) and reviewers (safety, API) in `.claude/`.
+
+## Agents on GitHub
+
+Every new pull request gets a review by AI agents (`.github/workflows/agent-review.yml`): they check what this repository's
+`CLAUDE.md` asks for and post one comment with their verdict. Maintainers can ask for more with `@claude …` in a comment, or hand
+over an issue with the label `agent-ready` (`.github/workflows/claude.yml`); agents never take on issues labelled `safety` and
+never merge. Pull requests from forks are not reviewed by agents.
 
 ## Roadmap
 
