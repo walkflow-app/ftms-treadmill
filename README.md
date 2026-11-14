@@ -94,6 +94,10 @@ treadmill before it is published. How releases work: [docs/LIBRARY.md](https://g
 `main` takes changes only through pull requests with CI green. Rules for AI agents are in `CLAUDE.md`, the commands they may
 run in `.claude/settings.json`, their skills (release, specs) and reviewers (safety, API) in `.claude/`.
 
+## Roadmap
+
+What is being done on the library, what comes next and what may come later: [ROADMAP.md](ROADMAP.md).
+
 ## Support
 
 If the library is useful to you, you can support it through [thanks.dev](https://thanks.dev/u/gh/walkflow-app) or
