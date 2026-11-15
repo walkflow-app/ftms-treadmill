@@ -77,8 +77,9 @@ jobs:
             Do nothing else: no comments, no other files, no other commands.
           # Read, Grep and Glob are not allowed outright, so they stay inside the checkout (the default); the deny list
           # (which also holds for Grep and Glob) keeps the process environment and the runner's files out of reach as well.
-          # Writing is allowed for triage.json only (an Edit rule covers Write).
+          # Writing is allowed for triage.json only (an Edit rule covers Write). Sorting is a simple task: Haiku.
           claude_args: |
+            --model haiku
             --allowedTools "Edit(./triage.json),Bash(gh issue view:*),Bash(gh issue list:*)"
             --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//etc/**),Read(//root/**),Read(//tmp/**),Read(//home/runner/.*/**),Read(//home/runner/work/_temp/**),Read(./.git/**)"
       - uses: actions/upload-artifact@v7
