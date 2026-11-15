@@ -102,6 +102,10 @@ Every new pull request gets a review by AI agents (`.github/workflows/agent-revi
 over an issue with the label `agent-ready` (`.github/workflows/claude.yml`); agents never take on issues labelled `safety` and
 never merge. Pull requests from forks are not reviewed by agents.
 
+A new issue from someone outside the project is sorted by `triage.yml`: an agent that can only read proposes labels,
+duplicates, missing details and where in the code it is; a second job without an agent checks that and writes the labels and
+one comment. It never sets `agent-ready`, closes or moves an issue.
+
 Once a month `docs-check.yml` has an agent read README.md, docs/LIBRARY.md and docs/API.md against the code and list what is
 no longer true in an issue "Docs out of date"; it changes no code. Dependabot keeps the GitHub Actions and the dev
 dependencies current once a month.
