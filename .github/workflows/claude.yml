@@ -1,7 +1,7 @@
 name: Claude
 
 # Claude on request: "@claude …" in an issue, a pull request or a review comment (from someone with write access), or the
-# label `agent-ready` on an issue. It works by CLAUDE.md, on a branch claude/…, and opens a pull request; `main` takes
+# label `agent-ready` on an issue ("@claude review" in a pull request goes to agent-review.yml). It works by CLAUDE.md, on a branch claude/…, and opens a pull request; `main` takes
 # changes only through pull requests, so nothing reaches it without a merge by a maintainer. Issues labelled `safety` are
 # never taken on: safety changes are made with the maintainer.
 # Needs the secret CLAUDE_CODE_OAUTH_TOKEN (claude setup-token).
@@ -23,7 +23,8 @@ permissions:
 jobs:
   claude:
     if: >-
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
+        !contains(github.event.comment.body, '@claude review')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && github.event.label.name == 'agent-ready' &&
