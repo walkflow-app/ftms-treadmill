@@ -495,6 +495,9 @@ describe('experiment console', () => {
     expect(checkConsoleCommand([2.5, 0xb0, 0x04], ctx)).toEqual(bad);
     expect(checkConsoleCommand([0x08, NaN], ctx)).toEqual(bad);
     expect(checkConsoleCommand([0x08, Infinity], ctx)).toEqual(bad);
+    // oxlint-disable-next-line no-sparse-arrays -- a hole would go out as 0
+    expect(checkConsoleCommand([0x02, , 0x01] as number[], ctx)).toEqual(bad);
+    expect(checkConsoleCommand(undefined as unknown as number[], ctx)).toEqual(bad);
     expect(checkConsoleCommand([0x00, 0xff], ctx)).toEqual({ action: 'send' });
   });
 

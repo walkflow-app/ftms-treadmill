@@ -289,7 +289,8 @@ const OP_SET_TARGET_HEART_RATE = 0x06;
 const isByte = (b: number) => Number.isInteger(b) && b >= 0 && b <= 0xff;
 
 export function checkConsoleCommand(bytes: number[], ctx: ConsoleContext): ConsoleCheck {
-  if (bytes.length === 0 || !bytes.every(isByte)) return { action: 'block', reason: { code: 'console-bad-bytes' } };
+  // Array.from turns a hole into undefined (every would skip it, Uint8Array would send it as 0)
+  if (!Array.isArray(bytes) || bytes.length === 0 || !Array.from(bytes).every(isByte)) return { action: 'block', reason: { code: 'console-bad-bytes' } };
   const op = bytes[0];
   if (op === OP.SET_SPEED) {
     const kmh = decodeSetSpeed(bytes);

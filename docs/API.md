@@ -276,11 +276,10 @@ const off = tm.on('ended', () => {
 
 `sendRaw(bytes: number[], options?: { confirmed?: boolean }): Promise<RawResult>`
 
-Sends Control Point bytes as they are, for an experiment console. Each must be an integer from 0 to 255 and there must be at
-least one, otherwise nothing is sent (`blocked` with `console-bad-bytes`), so the check sees exactly the bytes that go out.
-They are checked first, against the same limit, step and
-interval as everything else: a Set Speed above the limit, a jump bigger than `maxStep`, speed commands closer than 1.5 s
-or Heart Rate opcodes are not sent (`blocked`). A raw Start needs `confirmed: true` (`needs-confirmation`) because the belt
+Sends Control Point bytes as they are, for an experiment console. There must be at least one, each an integer from 0 to 255,
+otherwise nothing is sent (`blocked` with `console-bad-bytes`), so the check sees exactly the bytes that go out. They are
+checked against the same limit, step and interval as everything else: a Set Speed above the limit, a jump bigger than
+`maxStep`, speed commands closer than 1.5 s or Heart Rate opcodes are not sent (`blocked`). A raw Start needs `confirmed: true` (`needs-confirmation`) because the belt
 then starts without the start speed being set. A raw Stop or Pause ends a program (`ended` with `'console'`).
 
 ```ts
@@ -460,7 +459,7 @@ function noticeText(n: Notice): string {
     case 'speed-refused': return 'The treadmill refused the speed';
     case 'limit-lowered': return `Limit lowered: now ${n.kmh} km/h`;
     case 'limit-unconfirmed': return `${n.requested} km/h needs a confirmation; ${n.applied} km/h for now`;
-    case 'console-bad-bytes': return 'Only bytes 00-ff can be sent';
+    case 'console-bad-bytes': return 'At least one byte, each 00-ff';
     case 'console-set-speed-length': return 'Set Speed needs 3 bytes';
     case 'console-over-limit': return `${n.kmh} km/h is above the limit (${n.max})`;
     case 'console-jump': return `Jump ${n.from} → ${n.to} is bigger than ${n.maxStep} km/h`;
