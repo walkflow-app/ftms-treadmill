@@ -69,8 +69,11 @@ export function planRamp(from: number, to: number, maxStep: number, range: Speed
 }
 
 export interface GovernorDeps {
-  /** Sends Set Speed. false = write error. */
-  send(kmh: number): Promise<boolean>;
+  /**
+   * Sends Set Speed. false = write error. `current`, for a ramp step: asked when the write's turn comes; false = the ramp
+   * was ended meanwhile (stop, reset), the step is not written.
+   */
+  send(kmh: number, current?: () => boolean): Promise<boolean>;
   now(): number;
   /** What the governor did not do, or does later, as a code */
   notice?(n: Notice): void;
@@ -246,7 +249,7 @@ export class SpeedGovernor {
     const mine = { kmh: next, at: now };
     this.last = mine;
     this.deps.onChange?.();
-    void this.deps.send(next).catch(() => false).then(ok => {
+    void this.deps.send(next, () => gen === this.gen).catch(() => false).then(ok => {
       this.sending = false;
       // The interval counts from when the write finished: a slow write must not bring two steps to the treadmill together
       if (ok && this.last === mine) mine.at = this.deps.now();

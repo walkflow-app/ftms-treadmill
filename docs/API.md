@@ -142,7 +142,8 @@ tm.disconnect();
 `start(): Promise<boolean>`
 
 Asks for control, sets the treadmill's lowest speed (so it does not jump back to the speed it had last time), sends Start
-and then ramps up to the last speed asked for on this connection, if any (a new connection forgets it). `true` if both Request Control and Start went through; `false` if one
+and then ramps up to the last speed asked for on this connection, if any (a new connection forgets it, and so
+`state.target` is `null` after `disconnected`). `true` if both Request Control and Start went through; `false` if one
 failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent).
 
 Check `tm.state.controls.start` before offering Start: it is `false` while the belt may still be moving, a start is under
@@ -244,9 +245,9 @@ if (info.inclRange) await tm.setIncline(2.5);
 `setLimits(limits: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void`
 
 Changes the limit or the step while running. Lowering the limit takes effect at once: a target above it comes down
-(`limit-lowered`), and a belt above it is set to the new limit in one command, not in steps. A limit that is not a finite
-number is ignored: the one in force stays. A limit above 6 km/h needs `limitConfirmed: true` **in the same call**: the confirmation belongs to the
-value it was given with.
+(`limit-lowered`), and a belt above it is set to the new limit in one command, not in steps. A limit above 6 km/h needs
+`limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. A limit that is not
+a finite number is ignored, and the one in force stays.
 
 ```ts
 tm.setLimits({ speedLimit: 4 });                        // lower: always taken

@@ -226,13 +226,12 @@ export class TreadmillClient {
   /**
    * Writes to the Control Point. All writes go serially through a queue, with response.
    * `urgent` (stop/pause): waiting ordinary writes are dropped, the running one is awaited.
+   * `stale`: asked when the write's turn comes; true withdraws it (a ramp step that was ended while it waited).
    * Resolves to false on error, timeout or when dropped (all are logged), never throws.
    */
-  /** Drops the waiting ordinary writes (a speed command after the treadmill reported a stop); the running one is not undone */
-  dropWaiting() { this.queue.dropWaiting(); }
-
-  send(bytes: Uint8Array, opts: { urgent?: boolean } = {}): Promise<boolean> {
+  send(bytes: Uint8Array, opts: { urgent?: boolean; stale?: () => boolean } = {}): Promise<boolean> {
     const task = async () => {
+      if (opts.stale?.()) throw new DroppedError();
       this.ev.log(`→ ${hex(bytes)}`);
       const d = this.device;
       if (!d?.connected) throw new TreadmillError('not-connected');

@@ -22,12 +22,9 @@ export class BeltState {
   }
 
   /** Sends a command to the treadmill; false if there is no client or it failed */
-  send(bytes: Uint8Array, opts?: { urgent?: boolean }): Promise<boolean> {
+  send(bytes: Uint8Array, opts?: { urgent?: boolean; stale?: () => boolean }): Promise<boolean> {
     return this.client ? this.client.send(bytes, opts) : Promise.resolve(false);
   }
-
-  /** Withdraws the commands that wait to be written (not Stop or Pause) */
-  dropWaiting() { this.client?.dropWaiting(); }
 
   /**
    * A new connection: nothing is known about the belt. Call it before the connection is made, not after: the treadmill can

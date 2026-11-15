@@ -232,7 +232,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const notice = (n: Notice) => emit('notice', n);
 
   const governor = new SpeedGovernor({
-    send: kmh => session.send(cmdSetSpeed(kmh)),
+    // A ramp step ended while it waited in the queue is not written (a stop reported by the treadmill, #28 F)
+    send: (kmh, current) => session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}),
     now,
     notice,
     onChange: () => {

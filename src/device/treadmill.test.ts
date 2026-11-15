@@ -146,6 +146,20 @@ describe('the speed limit (promise 1)', () => {
     expect(dev.writes).toEqual(['03 14 00']);
   });
 
+  it('a stop reported while a start waits in the queue does not withdraw the start (#28 F)', async () => {
+    const { tm, dev } = await rig();
+    let release!: () => void;
+    dev.writeImpl = () => new Promise(r => { release = r; });
+    void tm.setIncline(2); // holds the queue
+    const started = tm.start();
+    await new Promise(r => setTimeout(r, 0));
+    dev.machineStatus(0x02, 0x01); // the echo of an earlier stop
+    dev.writeImpl = async () => {};
+    release();
+    await started;
+    expect(dev.writes.slice(0, 4)).toEqual(['03 14 00', '00', '02 64 00', '07']);
+  });
+
   it('forgets the speed asked for when the connection ends: a new one does not ramp to it (#28 E)', async () => {
     const { tm, dev, adapter } = await rig();
     dev.speed(2);

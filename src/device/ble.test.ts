@@ -160,7 +160,7 @@ describe('SerialQueue', () => {
     await expect(q.run(async () => 2)).resolves.toBe(2);
   });
 
-  it('dropWaiting drops the ordinary tasks that have not started, not the running one or an urgent one (#28 F)', async () => {
+  it('dropWaiting drops the ordinary tasks that have not started, not the running one or an urgent one', async () => {
     const q = new SerialQueue();
     let release!: () => void;
     const running = q.run(() => new Promise<string>(r => { release = () => r('ran'); }));
