@@ -285,7 +285,11 @@ export type ConsoleCheck =
 
 const OP_SET_TARGET_HEART_RATE = 0x06;
 
+/** A byte as it is sent: an integer 0-255. Anything else would change on its way into a Uint8Array, after the check. */
+const isByte = (b: number) => Number.isInteger(b) && b >= 0 && b <= 0xff;
+
 export function checkConsoleCommand(bytes: number[], ctx: ConsoleContext): ConsoleCheck {
+  if (bytes.length === 0 || !bytes.every(isByte)) return { action: 'block', reason: { code: 'console-bad-bytes' } };
   const op = bytes[0];
   if (op === OP.SET_SPEED) {
     const kmh = decodeSetSpeed(bytes);

@@ -413,6 +413,16 @@ describe('raw commands (experiment console)', () => {
     expect(dev.writes.at(-1)).toBe('08 01');
   });
 
+  it('anything that is not a byte is blocked, so the check sees what is sent (#24)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 4 });
+    const bad = { action: 'blocked', reason: { code: 'console-bad-bytes' } };
+    for (const bytes of [[0x102, 0xff, 0xff], [2.5, 0xb0, 0x04], [0x02, -1, 0xff], [0x107], [0x106, 0x64], [NaN], []]) {
+      expect(await tm.sendRaw(bytes)).toEqual(bad);
+      expect(await tm.sendRaw(bytes, { confirmed: true })).toEqual(bad);
+    }
+    expect(dev.writes).toEqual([]);
+  });
+
   it('nothing without a connection', async () => {
     const tm = createTreadmill();
     expect(await tm.sendRaw([0x00])).toEqual({ action: 'not-connected' });

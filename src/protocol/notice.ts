@@ -17,6 +17,7 @@ export class TreadmillError extends Error {
 
 /** Why the experiment console did not send a command (checkConsoleCommand) */
 export type ConsoleBlock =
+  | { code: 'console-bad-bytes' }
   | { code: 'console-set-speed-length' }
   | { code: 'console-over-limit'; kmh: number; max: number }
   | { code: 'console-jump'; from: number; to: number; maxStep: number }

@@ -92,7 +92,7 @@ The codes are in `src/protocol/notice.ts`; each one with its values and an examp
 | Connecting | `device`, `device-info`, `not-subscribable`, `features`, `controllable`, `features-unreadable`, `speed-range`, `speed-range-unreadable`, `incline-range`, `incline-range-unreadable`, `heart-rate` |
 | Writing | `write-dropped`, `write-failed` (with `no-gatt`, `not-connected`, `write-timeout` or the message of another error) |
 | Governor | `no-allowed-speed`, `speed-held-until-moving`, `ramp-aborted` |
-| Console (returned by `checkConsoleCommand`) | `console-set-speed-length`, `console-over-limit`, `console-jump`, `console-too-soon`, `console-heart-rate` |
+| Console (returned by `checkConsoleCommand`) | `console-bad-bytes`, `console-set-speed-length`, `console-over-limit`, `console-jump`, `console-too-soon`, `console-heart-rate` |
 | Start, stop and limits (the facade) | `start-speed-failed`, `speed-refused`, `limit-lowered`, `limit-unconfirmed` (see below) |
 
 The app has four codes of its own in the same style, for the limit it stores and edits (`src/core/safety/limit-settings.ts`:

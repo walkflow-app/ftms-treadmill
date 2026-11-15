@@ -486,6 +486,18 @@ describe('experiment console', () => {
     expect(checkConsoleCommand([0x02, ...le16(601)], c).action).toBe('block');
   });
 
+  it('blocks anything that is not a list of bytes 0-255', () => {
+    const bad = { action: 'block', reason: { code: 'console-bad-bytes' } };
+    expect(checkConsoleCommand([], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([0x102, 0xff, 0xff], ctx)).toEqual(bad); // opcode 258 would go out as 02 ff ff
+    expect(checkConsoleCommand([0x02, 256 + 0x2c, 0x01], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([0x02, -1, 0xff], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([2.5, 0xb0, 0x04], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([0x08, NaN], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([0x08, Infinity], ctx)).toEqual(bad);
+    expect(checkConsoleCommand([0x00, 0xff], ctx)).toEqual({ action: 'send' });
+  });
+
   it('blocks Set Speed with the wrong length', () => {
     expect(checkConsoleCommand([0x02, 0x2c], ctx).action).toBe('block');
     expect(checkConsoleCommand([0x02, 0x2c, 0x01, 0x00], ctx).action).toBe('block');
