@@ -126,16 +126,19 @@ one of them is a `safety` commit and at least a minor version.
 
 1. Nothing above `speedLimit` (or the device maximum, whichever is lower) is ever sent, also not through `sendRaw`.
    A `speedLimit` above 6 km/h counts only with `limitConfirmed: true`, otherwise it is 6 km/h.
-2. The speed changes by at most `maxStep` per command and not more often than every `RAMP_INTERVAL_MS`.
+2. The speed changes by at most `maxStep` per command and not more often than every `RAMP_INTERVAL_MS`, counted from when
+   the previous command was written. One exception: when the limit is lowered below the speed of the belt, the new limit
+   is sent in one command (the limit applies at once).
 3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. After Start the
-   speed asked for last (chosen while standing, or the one before a stop or pause) is ramped up to from there, once the
-   belt moves.
+   speed asked for last on this connection (chosen while standing, or the one before a stop or pause) is ramped up to from
+   there, once the belt moves.
 4. Stop and Pause go out ahead of everything queued, end a Start that is still being sent, ask for control first if it was
    lost, and are sent up to `STOP_ATTEMPTS` times. If none went through, `state.stopFailed` is true.
 5. A refused Stop on a moving belt sets `stopFailed`; a refused speed ends the ramp.
 6. A write that gets no answer is given up after `WRITE_TIMEOUT_MS`, so it cannot hold back a Stop.
 7. When the treadmill stops by itself (button, safety key) or the belt stands still while a speed is wanted (see
-   [Standstill](#standstill)), the ramp is forgotten and `ended` is sent. `ended` comes once per run of the belt: the
+   [Standstill](#standstill)), the ramp is forgotten, a speed command still waiting to be written is withdrawn, and `ended`
+   is sent. `ended` comes once per run of the belt: the
    treadmill reporting a stop the app already made forgets the ramp again but tells no second end; a start, the belt
    moving again, a program that begins or a new connection opens a new run.
 8. No method throws during a session (only `connect`); a failed command is `false` plus a notice.

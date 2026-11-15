@@ -31,9 +31,18 @@ export function inclineSupport(features: Features | undefined, range: Range | un
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
-/** The value that is sent: inside the reported range, with the 0.1 % resolution of the protocol. */
+/** Used when the treadmill takes an incline but its range could not be read: no downhill, nothing steeper than 15 % */
+const SAFE_INCLINE_RANGE: Range = { min: 0, max: 15, step: 0.1 };
+/** What Set Inclination can carry (sint16 in 0.1 %) */
+const PROTOCOL_INCLINE = { min: -3276.8, max: 3276.7 };
+
+/**
+ * The value that is sent: inside the reported range (or SAFE_INCLINE_RANGE), with the 0.1 % resolution of the protocol.
+ * NaN for a value that is no incline at all (not finite, or more than the protocol can carry): nothing is sent then.
+ */
 export function clampIncline(pct: number, range: Range | undefined): number {
   const v = round1(pct);
-  if (!range || Number.isNaN(v)) return v;
-  return Math.min(range.max, Math.max(range.min, v));
+  if (!Number.isFinite(v) || v < PROTOCOL_INCLINE.min || v > PROTOCOL_INCLINE.max) return Number.NaN;
+  const r = range ?? SAFE_INCLINE_RANGE;
+  return Math.min(r.max, Math.max(r.min, v));
 }

@@ -52,6 +52,7 @@ export function setupReports(host: ReportsHost) {
       if (standstill.feed(r.speed, now) && host.programActive()) {
         host.ended('standstill');
         governor.reset();
+        session.dropWaiting();
       }
     }
     host.data(r);
@@ -67,6 +68,8 @@ export function setupReports(host: ReportsHost) {
       session.beltStarted = false;
       host.ended(end);
       governor.reset();
+      // A speed command still waiting would go out after the treadmill stopped
+      session.dropWaiting();
       standstill.disarm();
     } else if (e.kind === 'started') {
       session.beltStarted = true;

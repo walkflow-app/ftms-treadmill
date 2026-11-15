@@ -26,6 +26,9 @@ export class BeltState {
     return this.client ? this.client.send(bytes, opts) : Promise.resolve(false);
   }
 
+  /** Withdraws the commands that wait to be written (not Stop or Pause) */
+  dropWaiting() { this.client?.dropWaiting(); }
+
   /**
    * A new connection: nothing is known about the belt. Call it before the connection is made, not after: the treadmill can
    * report its speed or a started belt while the connection is still being set up, and that must not be forgotten.

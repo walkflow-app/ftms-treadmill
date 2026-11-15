@@ -159,6 +159,21 @@ describe('SerialQueue', () => {
     await expect(q.run(async () => { throw new Error('x'); })).rejects.toThrow('x');
     await expect(q.run(async () => 2)).resolves.toBe(2);
   });
+
+  it('dropWaiting drops the ordinary tasks that have not started, not the running one or an urgent one (#28 F)', async () => {
+    const q = new SerialQueue();
+    let release!: () => void;
+    const running = q.run(() => new Promise<string>(r => { release = () => r('ran'); }));
+    const waiting = q.run(async () => 'waited');
+    const urgent = q.runUrgent(async () => 'urgent');
+    const after = q.run(async () => 'after');
+    q.dropWaiting();
+    release();
+    await expect(running).resolves.toBe('ran');
+    await expect(waiting).rejects.toBeInstanceOf(DroppedError);
+    await expect(after).rejects.toBeInstanceOf(DroppedError);
+    await expect(urgent).resolves.toBe('urgent');
+  });
 });
 
 describe('priority for stop/pause', () => {

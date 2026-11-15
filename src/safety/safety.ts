@@ -193,6 +193,7 @@ export class SpeedGovernor {
     const mine = { kmh, at: this.deps.now() };
     this.last = mine;
     const ok = await this.deps.send(kmh).catch(() => false);
+    if (ok && this.last === mine) mine.at = this.deps.now();
     if (!ok && this.last === mine) this.last = null;
     return ok;
   }
@@ -247,6 +248,8 @@ export class SpeedGovernor {
     this.deps.onChange?.();
     void this.deps.send(next).catch(() => false).then(ok => {
       this.sending = false;
+      // The interval counts from when the write finished: a slow write must not bring two steps to the treadmill together
+      if (ok && this.last === mine) mine.at = this.deps.now();
       // The belt never got this speed: the next ramp starts from the one it got before
       if (!ok && this.last === mine) this.last = before;
       if (gen === this.gen && !ok) {
