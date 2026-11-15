@@ -110,6 +110,11 @@ dependencies current once a month.
 
 What is being done on the library, what comes next and what may come later: [ROADMAP.md](ROADMAP.md).
 
+## Security
+
+A problem that could make a belt run faster, start sooner or not stop: please report it privately, as
+[SECURITY.md](SECURITY.md) explains, not in a public issue.
+
 ## Support
 
 If the library is useful to you, you can support it through [thanks.dev](https://thanks.dev/u/gh/walkflow-app) or
