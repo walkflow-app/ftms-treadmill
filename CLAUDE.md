@@ -58,7 +58,8 @@ npm run example                                                  # drives the si
 - **On GitHub:** `agent-review.yml` runs the reviewers on every new pull request and posts their verdicts (comment
   `@claude review` to run it again); `claude.yml` takes on `@claude …` requests and issues labelled `agent-ready`, never ones
   labelled `safety`. Both only work on branches and pull requests; a maintainer merges. Scheduled: `docs-check.yml` (monthly,
-  an issue "Docs out of date").
+  an issue "Docs out of date"). New issues from
+  outside: `triage.yml` (labels and one comment, never `agent-ready`).
 
 ## Never without being asked
 
