@@ -76,9 +76,10 @@ jobs:
 
             Do nothing else: no comments, no other files, no other commands.
           # Read, Grep and Glob are not allowed outright, so they stay inside the checkout (the default); the deny list
-          # (which also holds for Grep and Glob) keeps the process environment and the runner's files out of reach as well
+          # (which also holds for Grep and Glob) keeps the process environment and the runner's files out of reach as well.
+          # Writing is allowed for triage.json only (an Edit rule covers Write).
           claude_args: |
-            --allowedTools "Write,Bash(gh issue view:*),Bash(gh issue list:*)"
+            --allowedTools "Edit(./triage.json),Bash(gh issue view:*),Bash(gh issue list:*)"
             --disallowedTools "Read(//proc/**),Read(//sys/**),Read(//etc/**),Read(//root/**),Read(//tmp/**),Read(//home/runner/.*/**),Read(//home/runner/work/_temp/**),Read(./.git/**)"
       - uses: actions/upload-artifact@v7
         with:
@@ -139,7 +140,7 @@ jobs:
             .filter(f => typeof f === 'string' && /^[\w][\w./-]*$/.test(f) && !/(^|\/)(\.\.|\.git|node_modules)(\/|$)/.test(f) &&
               resolve(f).startsWith(process.cwd() + sep) && existsSync(f));
           let note = String(t.note ?? '').replace(/\s+/g, ' ').replace(/[`<>[\]()|*_#@\\]/g, '').slice(0, 300).trim();
-          if (/sk-ant|gh[pousr]_|github_pat|[A-Za-z0-9+/=_-]{20,}|https?:/i.test(note)) note = '';
+          if (/sk-ant|gh[pousr]_|github_pat|[A-Za-z0-9+/=_-]{20,}|https?:|www\./i.test(note)) note = '';
 
           const lines = ['<!-- triage -->', 'Thank you for the report. An agent sorted it; the maintainer decides what happens next.', ''];
           if (t.security === true)
