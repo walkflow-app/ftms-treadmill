@@ -54,6 +54,9 @@ npm run example                                                  # drives the si
   to `accepted`.
 - **Before opening a pull request**: agent `safety-reviewer` for anything in `src/device/`, `src/safety/` or `src/protocol/`;
   agent `api-reviewer` for anything exported or documented in docs/API.md. Fix what they find, or say in the pull request why not.
+  Reviewers run with another model than the one that wrote the change: written with Opus, the reviewer runs with Sonnet, and
+  the other way round; when that is unclear, Opus for safety code or big changes, else Sonnet. On GitHub
+  `.github/scripts/review-model.sh` picks it the same way, from the Co-Authored-By lines of the commits.
 - **"release"**: skill `release` (stops before publishing safety changes; brings the new version into the app afterwards).
 - **On GitHub:** `agent-review.yml` runs the reviewers on every new pull request and posts their verdicts (comment
   `@claude review` to run it again); `claude.yml` takes on `@claude …` requests and issues labelled `agent-ready`, never ones
