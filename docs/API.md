@@ -276,11 +276,13 @@ const off = tm.on('ended', () => {
 
 `sendRaw(bytes: number[], options?: { confirmed?: boolean }): Promise<RawResult>`
 
-Sends Control Point bytes as they are, for an experiment console. There must be at least one, each an integer from 0 to 255,
-otherwise nothing is sent (`blocked` with `console-bad-bytes`), so the check sees exactly the bytes that go out. They are
-checked against the same limit, step and interval as everything else: a Set Speed above the limit, a jump bigger than
-`maxStep`, speed commands closer than 1.5 s or Heart Rate opcodes are not sent (`blocked`). A raw Start needs `confirmed: true` (`needs-confirmation`) because the belt
-then starts without the start speed being set. A raw Stop or Pause ends a program (`ended` with `'console'`).
+Sends Control Point bytes as they are, for an experiment console. The list is a plain array of 1 to 512 numbers, each an
+integer from 0 to 255; anything else (a typed array such as `Uint8Array` too) is not sent (`blocked` with
+`console-bad-bytes`). The list is copied once, and the copy is what is checked and sent, so the check sees exactly the bytes
+that go out. They are checked against the same limit, step and interval as everything else: a Set Speed above the limit, a
+jump bigger than `maxStep`, speed commands closer than 1.5 s or Heart Rate opcodes are not sent (`blocked`). A raw Start
+needs `confirmed: true` (`needs-confirmation`) because the belt then starts without the start speed being set. A raw Stop or
+Pause ends a program (`ended` with `'console'`).
 
 ```ts
 import { parseHexBytes } from 'ftms-treadmill';

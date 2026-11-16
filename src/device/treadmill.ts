@@ -9,7 +9,7 @@ import { BeltPhaseTracker, MOVING_KMH, type BeltPhase } from '../safety/belt-pha
 import { clampIncline, inclineSupport } from '../safety/incline.ts';
 import {
   checkConsoleCommand, controlAvailability, DEFAULT_MAX_STEP, DEFAULT_SPEED_LIMIT, LIMIT_CONFIRM_ABOVE, LIMIT_MAX, LIMIT_MIN,
-  MAX_STEP_MAX, MAX_STEP_MIN, SpeedGovernor, StandstillDetector,
+  MAX_STEP_MAX, MAX_STEP_MIN, snapshotConsoleBytes, SpeedGovernor, StandstillDetector,
 } from '../safety/safety.ts';
 import { TreadmillClient, type BleAdapter, type ConnectResult } from './ble.ts';
 import { setupBelt } from './belt-commands.ts';
@@ -365,9 +365,11 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     return target;
   }
 
-  async function sendRaw(bytes: number[], o: { confirmed?: boolean } = {}): Promise<RawResult> {
+  async function sendRaw(given: number[], o: { confirmed?: boolean } = {}): Promise<RawResult> {
     const c = session.client;
     if (!c) return { action: 'not-connected' };
+    // One copy, read once: what is checked, decoded and sent below is this list, not the caller's (which could change)
+    const bytes = snapshotConsoleBytes(given);
     const check = checkConsoleCommand(bytes, {
       maxKmh: effectiveMax(),
       maxStep: governor.maxStep,

@@ -501,6 +501,20 @@ describe('experiment console', () => {
     expect(checkConsoleCommand([0x00, 0xff], ctx)).toEqual({ action: 'send' });
   });
 
+  it('blocks a list longer than a Control Point write can be (512 bytes)', () => {
+    const bad = { action: 'block', reason: { code: 'console-bad-bytes' } };
+    expect(checkConsoleCommand(Array.from({ length: 512 }, () => 0), ctx)).toEqual({ action: 'send' });
+    expect(checkConsoleCommand(Array.from({ length: 513 }, () => 0), ctx)).toEqual(bad);
+  });
+
+  it('blocks a huge sparse list at once, without walking it', () => {
+    const bad = { action: 'block', reason: { code: 'console-bad-bytes' } };
+    // 2**32-1 holes: copying them would hang the main thread, and a Stop could not run meanwhile
+    const huge: number[] = [];
+    huge.length = 2 ** 32 - 1;
+    expect(checkConsoleCommand(huge, ctx)).toEqual(bad);
+  });
+
   it('blocks Set Speed with the wrong length', () => {
     expect(checkConsoleCommand([0x02, 0x2c], ctx).action).toBe('block');
     expect(checkConsoleCommand([0x02, 0x2c, 0x01, 0x00], ctx).action).toBe('block');
