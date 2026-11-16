@@ -289,7 +289,7 @@ const OP_SET_TARGET_HEART_RATE = 0x06;
 const isByte = (b: number) => Number.isInteger(b) && b >= 0 && b <= 0xff;
 
 /** The longest list sendRaw takes: the most a Control Point write can carry (a BLE attribute is at most 512 bytes) */
-export const MAX_CONSOLE_BYTES = 512;
+const MAX_CONSOLE_BYTES = 512;
 
 /**
  * Copies a list once, before anything is checked, so that what is checked is what goes out (a getter or a Proxy could answer
