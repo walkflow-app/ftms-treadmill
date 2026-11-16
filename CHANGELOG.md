@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/walkflow-app/ftms-treadmill/compare/v0.2.1...v0.3.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* close the smaller promise gaps ([#32](https://github.com/walkflow-app/ftms-treadmill/issues/32))
+* sendRaw sends only bytes 0-255, so the check sees what goes out ([#31](https://github.com/walkflow-app/ftms-treadmill/issues/31))
+
+### Safety
+
+* close the smaller promise gaps ([#32](https://github.com/walkflow-app/ftms-treadmill/issues/32)) ([f81bcea](https://github.com/walkflow-app/ftms-treadmill/commit/f81bceaf70606942f0461312f112b6747dc4bdb7))
+* sendRaw sends only bytes 0-255, so the check sees what goes out ([#31](https://github.com/walkflow-app/ftms-treadmill/issues/31)) ([76a10bb](https://github.com/walkflow-app/ftms-treadmill/commit/76a10bbcbaa08ebaf6ea8c32d5ecb00624051c48))
+
 ## [0.2.1](https://github.com/walkflow-app/ftms-treadmill/compare/v0.2.0...v0.2.1) (2026-11-13)
 
 
