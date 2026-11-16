@@ -13,7 +13,7 @@ class FakeTreadmill implements BleDevice {
   subs = new Map<string, (dv: DataView) => void>();
   writeImpl: (data: Uint8Array) => Promise<void> = async () => {};
   private disconnectCb: (() => void) | null = null;
-  private readonly readable = new Map<string, number[]>([
+  readonly readable = new Map<string, number[]>([
     // Features: machine = Inclination (bit 3); target = Speed (bit 0), Inclination (bit 1)
     ['1826/2acc', [0x08, 0, 0, 0, 0x03, 0, 0, 0]],
     ['1826/2ad4', [100, 0, 0x20, 0x03, 10, 0]],
@@ -87,7 +87,9 @@ describe('the speed limit (promise 1)', () => {
     const { tm, dev } = await rig({ speedLimit: 4 });
     dev.speed(3.8);
     expect(tm.setSpeed(7)).toBe(4);
-    expect(dev.writes.every(w => !w.startsWith('02') || w === '02 90 01')).toBe(true);
+    // Waits for the write (#28 G: asserting at once passed on an empty list)
+    await vi.waitFor(() => expect(dev.writes).toContain('02 90 01'));
+    expect(dev.writes.filter(w => w.startsWith('02'))).toEqual(['02 90 01']);
   });
 
   it('above 6 km/h only with a confirmation, otherwise 6 km/h and a notice', async () => {
@@ -108,12 +110,68 @@ describe('the speed limit (promise 1)', () => {
     expect(tm.state.speedLimit).toBe(6);
   });
 
-  it('lowering never needs it, and nonsense is the default limit', async () => {
+  it('lowering never needs it, and nonsense keeps the limit in force (#28 D)', async () => {
     const { tm } = await rig();
-    tm.setLimits({ speedLimit: 4 });
-    expect(tm.state.speedLimit).toBe(4);
+    tm.setLimits({ speedLimit: 3 });
+    expect(tm.state.speedLimit).toBe(3);
     tm.setLimits({ speedLimit: Number.NaN });
-    expect(tm.state.speedLimit).toBe(DEFAULT_SPEED_LIMIT);
+    expect(tm.state.speedLimit).toBe(3);
+    tm.setLimits({ speedLimit: Number.POSITIVE_INFINITY, limitConfirmed: true });
+    expect(tm.state.speedLimit).toBe(3);
+  });
+
+  it('nonsense given when the treadmill is made is the default limit', () => {
+    expect(createTreadmill({ speedLimit: Number.NaN }).state.speedLimit).toBe(DEFAULT_SPEED_LIMIT);
+  });
+
+  it('a lowered limit is reached in one command, not in steps: the exception to promise 2 (#28 B)', async () => {
+    const { tm, dev } = await rig();
+    dev.speed(6); // running at 6 (started on the treadmill)
+    tm.setLimits({ speedLimit: 1 });
+    await vi.waitFor(() => expect(dev.writes).toEqual(['02 64 00']));
+  });
+
+  it('a queued speed command is withdrawn when the treadmill reports a stop (#28 F)', async () => {
+    const { tm, dev } = await rig();
+    dev.speed(2);
+    let release!: () => void;
+    dev.writeImpl = () => new Promise(r => { release = r; });
+    void tm.setIncline(2); // holds the queue
+    tm.setSpeed(2.5); // waits behind it
+    dev.machineStatus(0x02, 0x01);
+    dev.writeImpl = async () => {};
+    release();
+    await vi.waitFor(() => expect(dev.writes).toEqual(['03 14 00']));
+    await new Promise(r => setTimeout(r, 10));
+    expect(dev.writes).toEqual(['03 14 00']);
+  });
+
+  it('a stop reported while a start waits in the queue does not withdraw the start (#28 F)', async () => {
+    const { tm, dev } = await rig();
+    let release!: () => void;
+    dev.writeImpl = () => new Promise(r => { release = r; });
+    void tm.setIncline(2); // holds the queue
+    const started = tm.start();
+    await new Promise(r => setTimeout(r, 0));
+    dev.machineStatus(0x02, 0x01); // the echo of an earlier stop
+    dev.writeImpl = async () => {};
+    release();
+    await started;
+    expect(dev.writes.slice(0, 4)).toEqual(['03 14 00', '00', '02 64 00', '07']);
+  });
+
+  it('forgets the speed asked for when the connection ends: a new one does not ramp to it (#28 E)', async () => {
+    const { tm, dev, adapter } = await rig();
+    dev.speed(2);
+    tm.setSpeed(3);
+    dev.disconnect();
+    await tm.connect(adapter);
+    dev.writes = [];
+    expect(await tm.start()).toBe(true);
+    dev.speed(1);
+    await new Promise(r => setTimeout(r, 10));
+    expect(dev.writes.filter(w => w.startsWith('02'))).toEqual(['02 64 00']);
+    expect(tm.state.target).toBeNull();
   });
 
   it('a raw Set Speed above the limit is blocked', async () => {
@@ -387,6 +445,20 @@ describe('incline', () => {
     const { tm, dev } = await rig();
     expect(await tm.setIncline(15)).toBe(true);
     expect(dev.writes).toEqual(['03 64 00']);
+  });
+
+  it('never throws, and an unreadable range uses a safe one (#28 C)', async () => {
+    const dev = new FakeTreadmill();
+    dev.readable.delete('1826/2ad5');
+    const tm = createTreadmill({ clock: { now: () => 0, wait: async () => {} } });
+    await tm.connect({ kind: 'fake', availability: async () => ({ ok: true }), requestDevice: async () => dev });
+    dev.writes = [];
+    await expect(tm.setIncline(Infinity)).resolves.toBe(false);
+    await expect(tm.setIncline(5000)).resolves.toBe(false);
+    expect(dev.writes).toEqual([]);
+    expect(await tm.setIncline(300)).toBe(true);
+    expect(await tm.setIncline(-5)).toBe(true);
+    expect(dev.writes).toEqual(['03 96 00', '03 00 00']); // 15 % and 0 %, not 300 % or downhill
   });
 });
 

@@ -22,7 +22,7 @@ export class BeltState {
   }
 
   /** Sends a command to the treadmill; false if there is no client or it failed */
-  send(bytes: Uint8Array, opts?: { urgent?: boolean }): Promise<boolean> {
+  send(bytes: Uint8Array, opts?: { urgent?: boolean; stale?: () => boolean }): Promise<boolean> {
     return this.client ? this.client.send(bytes, opts) : Promise.resolve(false);
   }
 

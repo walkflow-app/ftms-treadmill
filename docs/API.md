@@ -142,7 +142,8 @@ tm.disconnect();
 `start(): Promise<boolean>`
 
 Asks for control, sets the treadmill's lowest speed (so it does not jump back to the speed it had last time), sends Start
-and then ramps up to the last speed asked for, if any. `true` if both Request Control and Start went through; `false` if one
+and then ramps up to the last speed asked for on this connection, if any (a new connection forgets it, and so
+`state.target` is `null` after `disconnected`). `true` if both Request Control and Start went through; `false` if one
 failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent).
 
 Check `tm.state.controls.start` before offering Start: it is `false` while the belt may still be moving, a start is under
@@ -227,8 +228,9 @@ document.querySelector('#slower')!.addEventListener('click', () => tm.changeSpee
 
 `setIncline(pct: number): Promise<boolean>`
 
-Sets the incline, clamped to the treadmill's range and rounded to 0.1 %. `false` if the treadmill cannot set an incline
-(see [`inclineSupport`](#inclinesupportfeatures-range)), `pct` is not a number or the command failed. Unlike the speed,
+Sets the incline, clamped to the treadmill's range (0 to 15 % if the range could not be read) and rounded to 0.1 %. Never
+throws: `false` if the treadmill cannot set an incline (see [`inclineSupport`](#inclinesupportfeatures-range)), `pct` is
+not a finite number or the command failed. Unlike the speed,
 there is no ramp: treadmills move the incline slowly by themselves.
 
 ```ts
@@ -243,8 +245,9 @@ if (info.inclRange) await tm.setIncline(2.5);
 `setLimits(limits: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void`
 
 Changes the limit or the step while running. Lowering the limit takes effect at once: a target above it comes down
-(`limit-lowered`). A limit above 6 km/h needs `limitConfirmed: true` **in the same call**: the confirmation belongs to the
-value it was given with.
+(`limit-lowered`), and a belt above it is set to the new limit in one command, not in steps. A limit above 6 km/h needs
+`limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. A limit that is not
+a finite number is ignored, and the one in force stays.
 
 ```ts
 tm.setLimits({ speedLimit: 4 });                        // lower: always taken
@@ -696,14 +699,16 @@ document.querySelector('#incline-figure')!.toggleAttribute('hidden', !incline.re
 
 `clampIncline(pct: number, range: Range | undefined): number`
 
-The incline that would be sent: rounded to 0.1 % and inside the range. `setIncline` does this itself; use it to show the
-value before it is sent.
+The incline that would be sent: rounded to 0.1 % and inside the range; without a range (it could not be read) inside 0 to
+15 %. `NaN` for a value that is no incline (not finite, or beyond what Set Inclination can carry): nothing is sent then.
+`setIncline` does this itself; use it to show the value before it is sent.
 
 ```ts
 import { clampIncline } from 'ftms-treadmill';
 
 console.log(clampIncline(12.34, { min: 0, max: 10, step: 0.5 })); // 10
 console.log(clampIncline(2.34, undefined));                      // 2.3
+console.log(clampIncline(40, undefined));                        // 15
 ```
 
 ### `parseHexBytes(text)`

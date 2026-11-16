@@ -157,7 +157,7 @@ export interface Treadmill {
   changeSpeed(deltaKmh: number, options?: { source?: CommandSource }): number | null;
   /**
    * Sets the incline, clamped to the treadmill's range and rounded to 0.1 %.
-   * @returns false if the treadmill cannot set an incline, pct is not a number or the command failed
+   * @returns false if the treadmill cannot set an incline, pct is not a finite number or the command failed (never throws)
    */
   setIncline(pct: number): Promise<boolean>;
   /**
@@ -232,7 +232,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const notice = (n: Notice) => emit('notice', n);
 
   const governor = new SpeedGovernor({
-    send: kmh => session.send(cmdSetSpeed(kmh)),
+    // A ramp step ended while it waited in the queue is not written (a stop reported by the treadmill, #28 F)
+    send: (kmh, current) => session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}),
     now,
     notice,
     onChange: () => {
@@ -289,7 +290,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     if (session.connected() && governor.target !== before && governor.target !== null) notice({ code: 'limit-lowered', kmh: governor.target });
   }
 
-  /** A limit above LIMIT_CONFIRM_ABOVE only with a confirmation; nonsense is the default limit */
+  /** A limit above LIMIT_CONFIRM_ABOVE only with a confirmation; nonsense is the default limit (setLimits never passes it) */
   function takeLimit(requested: number, confirmed: boolean) {
     let v = Number.isFinite(requested) ? Math.min(LIMIT_MAX, Math.max(LIMIT_MIN, requested)) : DEFAULT_SPEED_LIMIT;
     if (v > LIMIT_CONFIRM_ABOVE && !confirmed) {
@@ -312,6 +313,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   function onDisconnected() {
     const wasRunning = session.maybeRunning();
     governor.reset();
+    // A new connection (perhaps to another treadmill) does not ramp to the speed of this one
+    wanted = null;
     standstill.disarm();
     session.client = null;
     session.forgetBelt();
@@ -418,7 +421,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       return Number.isNaN(p) ? Promise.resolve(false) : session.send(cmdSetInclination(p));
     },
     setLimits(l: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }) {
-      if (l.speedLimit !== undefined) takeLimit(l.speedLimit, l.limitConfirmed ?? false);
+      // Nonsense keeps the limit in force (only a treadmill made with nonsense gets the default)
+      if (l.speedLimit !== undefined && Number.isFinite(l.speedLimit)) takeLimit(l.speedLimit, l.limitConfirmed ?? false);
       if (l.maxStep !== undefined) takeMaxStep(l.maxStep);
       applyRange();
     },

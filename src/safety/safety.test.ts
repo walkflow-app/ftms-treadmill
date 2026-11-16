@@ -162,6 +162,26 @@ describe('SpeedGovernor', () => {
     expect(sent).toEqual([[0, 3.5], [1500, 3]]);
   });
 
+  it('the interval counts from when a slow write finished, so two steps never reach the treadmill together (#28 A)', async () => {
+    const begun: number[] = [];
+    const done: number[] = [];
+    const gov = new SpeedGovernor({
+      send: async () => {
+        begun.push(Date.now());
+        await new Promise(r => setTimeout(r, begun.length === 1 ? 2000 : 0));
+        done.push(Date.now());
+        return true;
+      },
+      now: () => Date.now(),
+    });
+    gov.setRange({ min: 1, max: 6 });
+    gov.noteMeasured(2);
+    gov.request(3);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(begun.length).toBe(2);
+    expect(begun[1]! - done[0]!).toBeGreaterThanOrEqual(RAMP_INTERVAL_MS);
+  });
+
   it('caps targets to the limit', async () => {
     const { gov, sent } = make();
     gov.noteMeasured(5.5);

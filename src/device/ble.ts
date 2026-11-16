@@ -67,11 +67,16 @@ export class SerialQueue {
    * runs in parallel.
    */
   runUrgent<T>(task: () => Promise<T>): Promise<T> {
+    this.dropWaiting();
+    return this.add(task, true);
+  }
+
+  /** Rejects the ordinary tasks that have not started yet (DroppedError); the running one and urgent ones stay */
+  dropWaiting() {
     const waiting = this.pending.splice(0);
     for (const job of waiting) {
       if (job.urgent) this.pending.push(job); else job.reject(new DroppedError());
     }
-    return this.add(task, true);
   }
 
   private add<T>(task: () => Promise<T>, urgent: boolean): Promise<T> {
@@ -221,10 +226,12 @@ export class TreadmillClient {
   /**
    * Writes to the Control Point. All writes go serially through a queue, with response.
    * `urgent` (stop/pause): waiting ordinary writes are dropped, the running one is awaited.
+   * `stale`: asked when the write's turn comes; true withdraws it (a ramp step that was ended while it waited).
    * Resolves to false on error, timeout or when dropped (all are logged), never throws.
    */
-  send(bytes: Uint8Array, opts: { urgent?: boolean } = {}): Promise<boolean> {
+  send(bytes: Uint8Array, opts: { urgent?: boolean; stale?: () => boolean } = {}): Promise<boolean> {
     const task = async () => {
+      if (opts.stale?.()) throw new DroppedError();
       this.ev.log(`→ ${hex(bytes)}`);
       const d = this.device;
       if (!d?.connected) throw new TreadmillError('not-connected');
