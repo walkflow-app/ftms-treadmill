@@ -285,7 +285,27 @@ export type ConsoleCheck =
 
 const OP_SET_TARGET_HEART_RATE = 0x06;
 
-export function checkConsoleCommand(bytes: number[], ctx: ConsoleContext): ConsoleCheck {
+/** A byte as it is sent: an integer 0-255. Anything else would change on its way into a Uint8Array, after the check. */
+const isByte = (b: number) => Number.isInteger(b) && b >= 0 && b <= 0xff;
+
+/** The longest list sendRaw takes: the most a Control Point write can carry (a BLE attribute is at most 512 bytes) */
+const MAX_CONSOLE_BYTES = 512;
+
+/**
+ * Copies a list once, before anything is checked, so that what is checked is what goes out (a getter or a Proxy could answer
+ * differently on every read). A value that is no array, or too long to copy, comes back as it is: checkConsoleCommand blocks it.
+ */
+export function snapshotConsoleBytes(bytes: number[]): number[] {
+  return Array.isArray(bytes) && bytes.length <= MAX_CONSOLE_BYTES ? Array.from(bytes) : bytes;
+}
+
+export function checkConsoleCommand(given: number[], ctx: ConsoleContext): ConsoleCheck {
+  // The length is looked at before anything is copied: a list of 2**32-1 holes would hang the main thread, and a Stop with it.
+  // Array.from turns a hole into undefined (every would skip it, Uint8Array would send it as 0).
+  const bytes = snapshotConsoleBytes(given);
+  if (!Array.isArray(bytes) || bytes.length === 0 || bytes.length > MAX_CONSOLE_BYTES || !bytes.every(isByte)) {
+    return { action: 'block', reason: { code: 'console-bad-bytes' } };
+  }
   const op = bytes[0];
   if (op === OP.SET_SPEED) {
     const kmh = decodeSetSpeed(bytes);

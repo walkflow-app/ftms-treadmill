@@ -413,6 +413,37 @@ describe('raw commands (experiment console)', () => {
     expect(dev.writes.at(-1)).toBe('08 01');
   });
 
+  it('anything that is not a byte is blocked, so the check sees what is sent (#24)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 4 });
+    const bad = { action: 'blocked', reason: { code: 'console-bad-bytes' } };
+    for (const bytes of [[0x102, 0xff, 0xff], [2.5, 0xb0, 0x04], [0x02, -1, 0xff], [0x107], [0x106, 0x64], [NaN], []]) {
+      expect(await tm.sendRaw(bytes)).toEqual(bad);
+      expect(await tm.sendRaw(bytes, { confirmed: true })).toEqual(bad);
+    }
+    expect(dev.writes).toEqual([]);
+  });
+
+  it('a list that answers differently each time it is read sends what was checked (#24)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 4 });
+    let reads = 0;
+    const shifty = [0x02, 0, 0x00];
+    // the first read of the second byte says 0x64 (1.00 km/h, the base of the ramp), every later one 0xff (2.55 km/h, a jump the check blocks)
+    Object.defineProperty(shifty, 1, { get: () => (reads++ === 0 ? 0x64 : 0xff) });
+    expect(await tm.sendRaw(shifty)).toEqual({ action: 'sent', ok: true });
+    expect(dev.writes).toEqual(['02 64 00']);
+    expect(reads).toBe(1);
+  });
+
+  it('a huge list is blocked and nothing is sent', async () => {
+    const { tm, dev } = await rig({ speedLimit: 4 });
+    const bad = { action: 'blocked', reason: { code: 'console-bad-bytes' } };
+    const huge: number[] = [];
+    huge.length = 2 ** 32 - 1; // holes only: copying them would hang the main thread
+    expect(await tm.sendRaw(huge)).toEqual(bad);
+    expect(await tm.sendRaw(Array.from({ length: 513 }, () => 0))).toEqual(bad);
+    expect(dev.writes).toEqual([]);
+  });
+
   it('nothing without a connection', async () => {
     const tm = createTreadmill();
     expect(await tm.sendRaw([0x00])).toEqual({ action: 'not-connected' });
