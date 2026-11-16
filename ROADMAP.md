@@ -2,9 +2,9 @@
 
 What is being done on `ftms-treadmill`, what comes next, and what may come later. The maintainer decides what moves into
 *Now*. The app that uses it has [its own roadmap](https://github.com/walkflow-app/walkflow/blob/main/ROADMAP.md). Last updated:
-2026-11-14.
+2026-11-16.
 
-State: [0.2.1](https://github.com/walkflow-app/ftms-treadmill/releases/tag/v0.2.1) on npm; Walkflow 0.7.1 uses 0.2.0. Checked on a
+State: [0.2.1](https://github.com/walkflow-app/ftms-treadmill/releases/tag/v0.2.1) on npm; Walkflow 0.7.2 uses 0.2.0. Checked on a
 Sportstech sPad 500.
 
 ## Now
