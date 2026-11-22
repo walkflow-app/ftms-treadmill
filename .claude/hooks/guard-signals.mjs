@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // PreToolUse hook for Bash. A local session runs with the maintainer's own GitHub login, so GitHub cannot tell an agent's
-// comment from the maintainer's. This hook keeps an agent from giving the maintainer's signals:
-// - deny: a comment or review whose text is only `approved` or `/hardware-ok` (also from a body file, stdin or JSON),
-//   and approving a pull request review;
-// - ask: merging a pull request, and adding the label `agent-ready` (it starts an agent at once).
+// comment from the maintainer's. The PM does the GitHub work (process decision 0012), but the maintainer's steps go out only
+// after the maintainer confirms them in the permission dialog:
+// - ask: a comment or review whose text is only `approved` or `/hardware-ok` (also from a body file, stdin or JSON),
+//   approving a pull request review, merging a pull request, adding the label `agent-ready` (it starts an agent at once),
+//   closing an issue or a pull request, and publishing a release;
+// - deny: all of these when permissions are bypassed, because then there is no dialog to answer.
 // It is one layer, not a proof: a script the agent writes and runs is not checked. The same file is in .claude/hooks/ of
 // meta, walkflow, ftms-treadmill and route-store; change them together. Tests (in meta): node --test .claude/hooks/*.test.mjs
 import { readFileSync, statSync } from 'node:fs';
@@ -49,36 +51,58 @@ const read = (file, cwd) => {
   }
 };
 
-export const decide = (command, cwd = process.cwd()) => {
+const CONFIRM = {
+  approve: 'Approving a pull request is the maintainer\'s: confirm only if you approve it.',
+  signal: 'A comment that is only `approved` or `/hardware-ok` is the maintainer\'s signal (approval of a feature, or the '
+    + 'hardware check done): confirm only if you give it.',
+  agentReady: '`agent-ready` starts an agent at once: confirm that this task may start now.',
+  merge: 'Merging is the maintainer\'s decision: confirm this merge.',
+  close: 'Closing an issue or a pull request is the maintainer\'s decision: confirm it.',
+  release: 'Publishing a release is the maintainer\'s decision: confirm it (a safety or Bluetooth change only after '
+    + '`/hardware-ok`).',
+};
+
+/** The verdict for a command: ['ask' | 'deny', reason] or null. `mode` is the session's permission mode. */
+export const decide = (command, cwd = process.cwd(), mode = 'default') => {
+  const verdict = check(command, cwd);
+  if (verdict && mode === 'bypassPermissions') {
+    return ['deny', `Permissions are bypassed, so this cannot be confirmed. ${verdict}`];
+  }
+  return verdict ? ['ask', verdict] : null;
+};
+
+const check = (command, cwd) => {
   // Quoted text with spaces is a body or a title: what it says is not run (a GraphQL query is checked on the full command).
   const bare = command.replace(/"(?:[^"\\]|\\.)*"/g, q => (/\s/.test(q) ? q[0] + q[0] : q))
     .replace(/'[^']*'/g, q => (/\s/.test(q) ? q[0] + q[0] : q));
   if (invokes(bare, String.raw`gh\s+pr\s+review\b[^\n]*\s(?:--approve|-a)\b`)) {
-    return ['deny', 'Approving a pull request is the maintainer\'s, from their own GitHub session.'];
+    return CONFIRM.approve;
   }
   if (WRITE.test(command)) {
     const texts = [command, ...bodyFiles(command).map(f => read(f, cwd))];
     if (texts.some(t => jsonSignal(t) || t.split('\n').some(signalLine))) {
-      return ['deny', 'A comment that is only `approved` or `/hardware-ok` is the maintainer\'s signal, and this session '
-        + 'posts as the maintainer. Ask the maintainer to post it themselves.'];
+      return CONFIRM.signal;
     }
     const label = invokes(bare,
       String.raw`gh\s+(?:issue|pr)\s+(?:edit|create)\b[^\n]*\s(?:--add-label|--label|-l)(?:=|\s+)["']?[^\s"']*agent-ready`)
       || invokes(bare, String.raw`gh\s+api\b[^\n]*labels[^\n]*agent-ready`);
-    if (label) return ['ask', '`agent-ready` starts an agent at once: confirm that this task may start now.'];
+    if (label) return CONFIRM.agentReady;
   }
   if (invokes(bare, String.raw`gh\s+pr\s+merge\b`) || invokes(command,
     String.raw`gh\s+api\b[\s\S]*(?:/pulls/\d+/merge\b|mergePullRequest|enablePullRequestAutoMerge)`)) {
-    return ['ask', 'Merging is the maintainer\'s decision: confirm this merge.'];
+    return CONFIRM.merge;
   }
+  if (invokes(bare, String.raw`gh\s+(?:issue|pr)\s+close\b`)) return CONFIRM.close;
+  if (invokes(bare, String.raw`gh\s+release\s+edit\b[^\n]*--draft(?:=false|\s+false)\b`)
+    || (invokes(bare, String.raw`gh\s+release\s+create\b`) && !/\s--draft\b(?!=false)/.test(bare))) return CONFIRM.release;
   return null;
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
-  const { tool_name: tool, tool_input: { command = '' } = {}, cwd } = JSON.parse(input || '{}');
-  const verdict = tool === 'Bash' ? decide(command, cwd) : null;
+  const { tool_name: tool, tool_input: { command = '' } = {}, cwd, permission_mode: mode } = JSON.parse(input || '{}');
+  const verdict = tool === 'Bash' ? decide(command, cwd, mode) : null;
   if (verdict) {
     process.stdout.write(JSON.stringify({
       hookSpecificOutput: {
