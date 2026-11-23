@@ -46,6 +46,6 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   });
   const open = releaseGate(prs, rel ? comments(rel) : [], who);
   console.log(`Since ${last}: ${prs.length} pull requests, ${open.length} waiting for the hardware checks.`);
-  for (const p of open) console.log(`::error::#${p.number} ${p.title}: run its checks (written in the pull request, collected in walkflow's HARDWARE-TESTS.md) on a treadmill, then comment "/hardware-ok" on it (or once on the release pull request for all).`);
+  for (const p of open) console.log(`::error::#${p.number} ${p.title}: run its checks (written in the pull request, collected in walkflow's HARDWARE-TESTS.md) on a treadmill, then comment "/hardware-ok" on it (or once on the release pull request for all) and re-run this job.`);
   process.exitCode = open.length ? 1 : 0;
 }

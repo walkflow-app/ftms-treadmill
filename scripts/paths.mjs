@@ -1,5 +1,6 @@
 // The paths the process distinguishes, in one place: read by the agent pipeline, the safety gate, the release gate and the choice
 // of the reviewing model (.github/scripts/review-model.sh). Change a list here and nowhere else (same as walkflow's scripts/paths.mjs).
+// CODEOWNERS mirrors it and is kept by hand.
 
 /** Belt code: what decides what is sent to the treadmill (the promises of docs/LIBRARY.md). Test first, two reviews by two models,
  *  label needs-hardware, one check on a treadmill before the release is published to npm. The pipeline merges it. */
@@ -9,8 +10,8 @@ export const SAFETY = [/^src\/safety\//, /^src\/protocol\//, /^src\/device\/(tre
 export const TRUST = [];
 
 /** The same lists for a shell: `node scripts/paths.mjs safety|trust|careful` prints one extended regular expression. */
-// An empty list prints a pattern that matches nothing (an empty one would match every line of a grep)
-export const asRegExp = list => (list.length ? list.map(p => p.source.replaceAll('\\/', '/')).join('|') : '$^');
+// An empty list prints a pattern that matches nothing (an empty one would match every line of a grep; `$^` would match an empty line)
+export const asRegExp = list => (list.length ? list.map(p => p.source.replaceAll('\\/', '/')).join('|') : 'x^');
 
 import { pathToFileURL } from 'node:url';
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
