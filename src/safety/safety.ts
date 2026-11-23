@@ -117,7 +117,7 @@ export class SpeedGovernor {
   private confirmed: { kmh: number; at: number } | null = null;
   /** The limit was lowered while the belt may run above it, not confirmed yet */
   private limitPending = false;
-  private over: { first: number; last: number } | null = null;
+  private over: { first: number; last: number; kmh: number } | null = null;
   /** The limit, to be sent in one command: the belt was shown to run above it (a command down, never a step up) */
   private lowering: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -163,13 +163,14 @@ export class SpeedGovernor {
     } else {
       this.anchor = { kmh, at };
     }
-    // A limit lowered below a belt that runs faster: two readings above it, 1 s apart, show that, however they jitter.
+    // A limit lowered below a belt that runs faster: two readings above it, 1 s apart and agreeing within maxStep, show that.
     // These readings only serve the lowered limit (a command down); they are never `confirmed`, the base of a step up.
     let overConfirmed = false;
     if (this.limitPending) {
       if (!this.aboveLimit(kmh)) this.over = null;
-      else if (!this.over || at - this.over.last > this.opts.freshMs) this.over = { first: at, last: at };
-      else {
+      else if (!this.over || at - this.over.last > this.opts.freshMs || Math.abs(kmh - this.over.kmh) > this.maxStep + EPS) {
+        this.over = { first: at, last: at, kmh }; // the readings must agree within maxStep, like any confirmation
+      } else {
         this.over.last = at;
         if (at - this.over.first >= CONFIRM_MS) overConfirmed = true;
       }
@@ -198,6 +199,7 @@ export class SpeedGovernor {
    * Planning starts here: the last command while the belt is still settling. After that the speed two readings agree on, if it
    * differs from the last command by more than maxStep (changed on the treadmill itself), else the last command. A reading
    * that is on its own, or no speed at all, never lifts the base: the next command is at most maxStep above the last one.
+   * A plausible reading below the last command lowers the base at once (min of the two): that can only shrink a step.
    */
   base(): number {
     const now = this.deps.now();
@@ -210,6 +212,9 @@ export class SpeedGovernor {
     if (now - l.at < this.opts.settleMs) return l.kmh;
     const c = fresh(this.confirmed);
     if (c !== undefined && Math.abs(c - l.kmh) > this.maxStep + EPS) return c;
+    // A belt slower than the last command lowers the base at once, without confirmation: that can only make a step smaller
+    const m = fresh(this.measured);
+    if (m !== undefined && m >= 0 && m <= LIMIT_MAX && m < l.kmh) return m;
     return l.kmh;
   }
 
@@ -239,7 +244,7 @@ export class SpeedGovernor {
     else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(range.max);
     else {
       this.limitPending = above;
-      if (above) this.over = { first: m.at, last: m.at };
+      if (above) this.over = { first: m.at, last: m.at, kmh: m.kmh };
       this.pump();
     }
   }
