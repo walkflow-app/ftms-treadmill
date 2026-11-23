@@ -4,7 +4,7 @@
 // No texts and no DOM: what it has to say is a Notice code, the app says it in its language.
 
 import { cmdRequestControl, cmdSetInclination, cmdSetSpeed, hex, OP, parseTrainingStatus, type ControlPointResponse, type MachineEvent, type Range, type TreadmillData } from '../protocol/ftms.ts';
-import type { ConsoleBlock, Notice } from '../protocol/notice.ts';
+import { TreadmillError, type ConsoleBlock, type Notice } from '../protocol/notice.ts';
 import { BeltPhaseTracker, MOVING_KMH, type BeltPhase } from '../safety/belt-phase.ts';
 import { clampIncline, inclineSupport } from '../safety/incline.ts';
 import {
@@ -74,9 +74,9 @@ export interface TreadmillState {
   effectiveMax: number;
   /** The incline range the treadmill reported */
   inclineRange: Range | null;
-  /** The treadmill gave control away; the next Start or Stop asks for it again */
+  /** The treadmill gave control away, or refused a Stop or the request for control (result 5); the next Start or Stop asks for it again */
   controlLost: boolean;
-  /** A Stop or Pause did not get through while connected: the person has to stop the belt on the treadmill */
+  /** A Stop or Pause failed (from the first failed attempt on, until one gets through) or was refused on a belt that may run: the person has to stop the belt on the treadmill */
   stopFailed: boolean;
   /** What setProgramActive said */
   programActive: boolean;
@@ -100,7 +100,7 @@ export interface TreadmillEventMap {
   log: string;
   /** The belt was stopped or stopped by itself: a running program ends. Once per run of the belt (a stop and the treadmill reporting it are one) */
   ended: { reason: EndReason };
-  /** true: a Stop or Pause did not get through, the person has to stop the belt on the treadmill; false: one did later */
+  /** true: a Stop or Pause failed at an attempt (more may follow) or was refused on a belt that may run: the person has to stop the belt on the treadmill, without blocking the page; false: one went through */
   stopFailed: boolean;
   /** The belt phase may have changed because of a command or a report (it also changes with time: read state.belt) */
   phase: BeltPhase;
@@ -128,7 +128,7 @@ export interface Treadmill {
   /**
    * Asks the adapter for a device (Web Bluetooth: the browser's picker, so call it from a click), connects, reads what the
    * treadmill can do and asks for control. Again while connected: the same result.
-   * @throws the adapter's error when no device was chosen or it has no FTMS service
+   * @throws the adapter's error when no device was chosen or it has no FTMS service; a TreadmillError `superseded` when a newer connect() took over meanwhile
    */
   connect(adapter: BleAdapter): Promise<ConnectResult>;
   /** Ends the connection; disconnected follows. Does not stop the belt: stop first if it may be running. */
@@ -136,13 +136,13 @@ export interface Treadmill {
   /**
    * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for. No Start is sent if the
    * lowest speed was not set or refused (start-speed-failed), and nothing at all on a belt measured moving (start-belt-moving).
-   * @returns false if a command failed, nothing was sent for one of those reasons, or a Stop or Pause came in meanwhile
+   * @returns false if a command failed, nothing was sent for one of those reasons, a Stop or Pause came in meanwhile, or one is still being sent (nothing is sent then)
    */
   start(): Promise<boolean>;
   /**
    * Stops the belt: ends the ramp and a running program (ended), sends Stop ahead of everything queued, and again up to
    * STOP_ATTEMPTS times. Always allowed while connected.
-   * @returns false if it did not get through; then state.stopFailed is true and the person has to stop the belt on the treadmill
+   * @returns false if no attempt got through; state.stopFailed is true from the first failed attempt on, and the person has to stop the belt on the treadmill
    */
   stop(): Promise<boolean>;
   /** Like stop, with Pause (the treadmill keeps distance and time); start resumes at the speed before. */
@@ -387,18 +387,22 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
 
   async function connect(adapter: BleAdapter): Promise<ConnectResult> {
     if (session.connected() && info) return info;
-    const client = new TreadmillClient(adapter, {
+    // Only the newest attempt owns the session: an older one that fails or succeeds late must not touch it
+    const current = () => session.client === client;
+    const client: TreadmillClient = new TreadmillClient(adapter, {
       log: m => emit('log', m),
       notice,
-      data: reports.data,
-      heartRate: bpm => emit('heartRate', bpm),
-      machineStatus: reports.machineStatus,
+      // What a superseded attempt hears is not about the session any more (an answer would be handled twice)
+      data: d => { if (current()) reports.data(d); },
+      heartRate: bpm => { if (current()) emit('heartRate', bpm); },
+      machineStatus: dv => { if (current()) reports.machineStatus(dv); },
       trainingStatus: dv => {
+        if (!current()) return;
         const s = parseTrainingStatus(dv);
         emit('trainingStatus', { hex: hex(dv), status: s?.status ?? null, text: s?.text ?? null });
       },
-      controlResponse: reports.controlResponse,
-      disconnected: onDisconnected,
+      controlResponse: r => { if (current()) reports.controlResponse(r); },
+      disconnected: () => { if (current()) onDisconnected(); },
     });
     session.begin(client);
     deviceRange = { ...DEFAULT_DEVICE_RANGE };
@@ -407,8 +411,13 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     try {
       result = await client.connect();
     } catch (e) {
-      if (!session.connected()) session.client = null;
+      if (current() && !session.connected()) session.client = null;
       throw e;
+    }
+    if (!current()) {
+      // Another connect() took over while this one was being made: it keeps the session, this device is let go
+      client.disconnect();
+      throw new TreadmillError('superseded');
     }
     if (result.speedRange) deviceRange = { min: result.speedRange.min, max: result.speedRange.max };
     info = result;
@@ -452,11 +461,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       return { action: 'sent', ok };
     }
     if (bytes[0] === OP.STOP_PAUSE && (bytes[1] === 0x01 || bytes[1] === 0x02)) {
-      ended('console');
-      governor.reset();
-      standstill.disarm();
-      const ok = await c.send(data, { urgent: true });
-      if (ok) session.beltStarted = false;
+      // The same path as stop() and pause(): ends a Start on its way, asks for control, is sent again, warns if it fails
+      const ok = await (bytes[1] === 0x01 ? belt.stop('console') : belt.pause('console'));
       return { action: 'sent', ok };
     }
     if (check.setSpeed !== undefined) governor.noteExternalCommand(check.setSpeed);
@@ -471,8 +477,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       newRun();
       return belt.start();
     },
-    stop: belt.stop,
-    pause: belt.pause,
+    stop: () => belt.stop(),
+    pause: () => belt.pause(),
     setSpeed,
     changeSpeed(deltaKmh: number, o: { source?: CommandSource } = {}) {
       return setSpeed((governor.target ?? governor.base()) + deltaKmh, o);

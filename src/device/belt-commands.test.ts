@@ -89,7 +89,60 @@ describe('stop', () => {
     expect(r.sends()).toEqual(['send 08 01 urgent', 'send 08 01 urgent']);
     expect(r.session.beltStarted).toBe(false);
     expect(r.stopFailed).toHaveBeenLastCalledWith(false);
-    expect(r.stopFailed).not.toHaveBeenCalledWith(true);
+  });
+
+  it('tells at the first failed attempt that the belt may have to be stopped by hand, not only after the last (#27 E)', async () => {
+    const r = rig({ ok: false });
+    r.wait.mockImplementation(async () => { r.calls.push('wait'); });
+    r.stopFailed.mockImplementation((f: boolean) => { r.calls.push(`stopFailed ${f}`); });
+    await r.belt.stop();
+    expect(r.calls.indexOf('stopFailed true')).toBeLessThan(r.calls.indexOf('wait'));
+  });
+
+  it('a Stop refused for control asks for control again before its next attempt (#27 D)', async () => {
+    let n = 0;
+    const r = rig({ ok: h => { if (h === '08 01') n++; if (n === 1 && h === '08 01') r.session.controlLost = true; return n > 1; } });
+    r.session.beltStarted = true;
+    expect(await r.belt.stop()).toBe(true);
+    expect(r.sends()).toEqual(['send 08 01 urgent', 'send 00 urgent', 'send 08 01 urgent']);
+  });
+
+  it('start() during a failing Stop (waiting to try again): the Stop keeps its attempts, start() is false (#27 A)', async () => {
+    const r = rig({ ok: false });
+    let started: boolean | undefined;
+    r.wait.mockImplementationOnce(async () => { started = await r.belt.start(); });
+    expect(await r.belt.stop()).toBe(false);
+    expect(started).toBe(false);
+    expect(r.sends()).toEqual(Array(STOP_ATTEMPTS).fill('send 08 01 urgent'));
+    expect(r.stopFailed).toHaveBeenLastCalledWith(true);
+  });
+
+  it('start() while the first Stop write is still going is no Start either, and the Stop is not overtaken (#27 A)', async () => {
+    let release!: () => void;
+    let n = 0;
+    const r = rig({ ok: h => (h === '08 01' && ++n === 1 ? new Promise<boolean>(res => { release = () => res(false); }) : false) });
+    const stopping = r.belt.stop();
+    expect(await r.belt.start()).toBe(false);
+    release();
+    expect(await stopping).toBe(false);
+    expect(r.sends()).toEqual(Array(STOP_ATTEMPTS).fill('send 08 01 urgent'));
+    expect(r.stopFailed).toHaveBeenLastCalledWith(true);
+  });
+
+  it('once the Stop is over, start() works again', async () => {
+    const r = rig();
+    await r.belt.stop();
+    expect(await r.belt.start()).toBe(true);
+  });
+
+  it('a raw Stop is a Stop: console as the reason, attempts and warning like any other (#27 B)', async () => {
+    const r = rig({ ok: false });
+    expect(await r.belt.stop('console')).toBe(false);
+    expect(r.abortRun).toHaveBeenCalledWith('console');
+    expect(r.sends()).toEqual(Array(STOP_ATTEMPTS).fill('send 08 01 urgent'));
+    expect(r.stopFailed).toHaveBeenLastCalledWith(true);
+    expect(await r.belt.pause('console')).toBe(false);
+    expect(r.sends().at(-1)).toBe('send 08 02 urgent');
   });
 
   it('does not try again once the connection is gone (the connection alarm says so), and does not warn twice', async () => {

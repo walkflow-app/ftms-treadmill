@@ -93,7 +93,10 @@ returns `false` or `null` and sends a [notice](#notices).
 `connect(adapter: BleAdapter): Promise<ConnectResult>`
 
 Asks the adapter for a device (with Web Bluetooth: the browser's device picker), connects, subscribes to what the treadmill
-reports, reads what it can do and asks for control. Calling it again while connected returns the same result.
+reports, reads what it can do and asks for control. Calling it again while connected returns the same result. If it is
+called again while an earlier call is still connecting, the newest call keeps the connection; the earlier one rejects with
+a `TreadmillError` with the code `superseded` if it would have succeeded (ignore that one quietly), or with its own error,
+and touches nothing of the session.
 
 Throws if there is no device (the person closed the picker) or the device has no FTMS service; the error is the adapter's
 own (with Web Bluetooth a `DOMException`, e.g. `NotFoundError` when the picker was closed).
@@ -144,7 +147,8 @@ tm.disconnect();
 Asks for control, sets the treadmill's lowest speed (so it does not jump back to the speed it had last time), sends Start
 and then ramps up to the last speed asked for on this connection, if any (a new connection forgets it, and so
 `state.target` is `null` after `disconnected`). `true` if both Request Control and Start went through; `false` if one
-failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent).
+failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent). While a Stop or Pause is
+still being sent or sent again, `start()` sends nothing and returns `false`: the Stop keeps its attempts.
 
 Start is **not sent** when the lowest speed was not set: the write failed, the limit is below the treadmill's lowest speed
 (`no-allowed-speed`), or the treadmill refused it. It waits up to one second for the treadmill's answer to that speed; a
@@ -177,9 +181,12 @@ if (tm.state.controls.start && (await tm.start())) {
 `stop(): Promise<boolean>`
 
 Stops the belt: forgets the ramp, ends a running program (`ended` with `'stop'`), and sends Stop **urgently**, ahead of
-everything queued. If it did not get through, it is sent again, up to `STOP_ATTEMPTS` times, `STOP_RETRY_MS` apart. If
-every attempt failed while still connected, it returns `false`, `state.stopFailed` becomes `true` and `stopFailed` is
-sent: tell the person to stop the belt on the treadmill.
+everything queued. If it did not get through, it is sent again, up to `STOP_ATTEMPTS` times, `STOP_RETRY_MS` apart, and
+asks for control first if the treadmill reported it lost (also when it refused an earlier Stop for missing control: the
+next Stop asks first). As soon as the first attempt failed
+while still connected, `state.stopFailed` becomes `true` and `stopFailed` is sent: tell the person to stop the belt on the
+treadmill (it goes away again, with `stopFailed` `false`, when a later attempt gets through). If every attempt failed,
+it returns `false`.
 
 Stop is always allowed while connected (`state.controls.stop`).
 
@@ -301,7 +308,8 @@ integer from 0 to 255; anything else (a typed array such as `Uint8Array` too) is
 that go out. They are checked against the same limit, step and interval as everything else: a Set Speed above the limit, a
 jump bigger than `maxStep`, speed commands closer than 1.5 s or Heart Rate opcodes are not sent (`blocked`). A raw Start
 needs `confirmed: true` (`needs-confirmation`) because the belt then starts without the start speed being set. A raw Stop or
-Pause ends a program (`ended` with `'console'`).
+Pause is a Stop or Pause like `tm.stop()` and `tm.pause()`: it ends a program (`ended` with `'console'`) and any Start still being sent,
+goes out urgently, is sent again if it fails and sets `stopFailed` when an attempt failed.
 
 ```ts
 import { parseHexBytes } from 'ftms-treadmill';
@@ -411,7 +419,7 @@ off();
 | `notice` | [`Notice`](#notices) | something worth telling the person or a log |
 | `log` | `string` | protocol lines (bytes sent, an answer that could not be read); not for people |
 | `ended` | `{ reason: EndReason }` | the belt was stopped, or stopped by itself: end your program (once per run, see [`EndReason`](#endreason)) |
-| `stopFailed` | `boolean` | a Stop or Pause did not get through (`true`), or later did (`false`) |
+| `stopFailed` | `boolean` | a Stop or Pause did not get through at the first attempt, the next ones may still follow (`true`), or one did (`false`); also `true` when the treadmill refused a Stop of a belt that may be running |
 | `phase` | `BeltPhase` | after a start or stop request, after connecting; `state.belt` also moves with time |
 | `target` | `undefined` | target, last command or ramp changed |
 | `disconnected` | `{ wasRunning: boolean }` | the connection is gone; `wasRunning`: the belt may still be moving |
@@ -425,11 +433,14 @@ tm.on('controlResponse', r => { if (r.result !== 1) console.log(`op 0x${r.reques
 tm.on('notice', n => console.log('notice', n.code, n));
 tm.on('log', line => console.debug(line));
 tm.on('ended', e => console.log('belt ended:', e.reason));
-tm.on('stopFailed', failed => { if (failed) alert('Stop the belt on the treadmill!'); });
+tm.on('stopFailed', failed => { document.querySelector('#warning')?.toggleAttribute('hidden', !failed); });
 tm.on('phase', p => console.log('phase', p));
 tm.on('target', () => console.log('target', tm.state.target));
 tm.on('disconnected', e => { if (e.wasRunning) alert('Connection lost. The belt may still be running!'); });
 ```
+
+`stopFailed` (`true`) comes as soon as the first attempt to stop failed, while the next attempts are still to be made. Show it
+without blocking (a banner, not `alert()`: a dialog that waits for a click holds the retries up on the same thread).
 
 #### `EndReason`
 
@@ -535,7 +546,8 @@ notice's `error`, or when your own [adapter](#your-own-adapter) throws it.
 
 ### `TreadmillErrorCode`
 
-`'no-gatt' | 'not-connected' | 'write-timeout'` (a write got no answer within `WRITE_TIMEOUT_MS`).
+`'no-gatt' | 'not-connected' | 'write-timeout' | 'superseded'` (`write-timeout`: a write got no answer within
+`WRITE_TIMEOUT_MS`; `superseded`: the only one `connect()` itself rejects with, see [`tm.connect`](#tmconnectadapter)).
 
 ```ts
 import { TreadmillError } from 'ftms-treadmill';
@@ -867,7 +879,7 @@ function draw() {
   $('speed').textContent = s.lastMeasured?.toFixed(1) ?? '–';
 }
 for (const e of ['data', 'phase', 'target', 'stopFailed', 'disconnected'] as const) tm.on(e, draw);
-tm.on('stopFailed', failed => { if (failed) alert('Stop the belt on the treadmill!'); });
+tm.on('stopFailed', failed => { document.querySelector('#warning')?.toggleAttribute('hidden', !failed); });
 tm.on('disconnected', e => { if (e.wasRunning) alert('Connection lost. The belt may still be running!'); });
 
 $('connect').onclick = () => tm.connect(new WebBluetoothAdapter()).then(draw, e => console.log(e));

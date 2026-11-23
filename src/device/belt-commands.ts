@@ -25,7 +25,7 @@ export interface BeltHost {
   /** The last speed asked for, also before a stop or pause: Start ramps up to it again (null: none yet) */
   wanted(): number | null;
   /** The belt is stopped or paused on purpose: a running workout or route ends */
-  ended(reason: 'stop' | 'pause'): void;
+  ended(reason: 'stop' | 'pause' | 'console'): void;
   notice(n: Notice): void;
   /** Resolves after this many milliseconds (between two attempts to stop) */
   wait(ms: number): Promise<void>;
@@ -45,9 +45,11 @@ export function setupBelt(host: BeltHost) {
   const { session, phase, governor, standstill } = host;
   /** Counts every start, stop and pause: whoever finds a higher number after waiting has been overtaken and gives up */
   let epoch = 0;
+  /** Stops and Pauses being sent or sent again: a Start does not take over from them (it would end their attempts) */
+  let stopping = 0;
 
   /** The belt stops (or pauses) on purpose: nothing may keep it going, and standing still is expected from now on */
-  function leaveRunning(reason: 'stop' | 'pause') {
+  function leaveRunning(reason: 'stop' | 'pause' | 'console') {
     epoch++;
     phase.stopRequested(host.now());
     host.ended(reason);
@@ -63,31 +65,38 @@ export function setupBelt(host: BeltHost) {
     const c = session.client;
     if (!c) return false;
     const mine = epoch;
-    if (session.controlLost) void c.send(cmdRequestControl(), { urgent: true });
-    for (let attempt = 1; ; attempt++) {
-      if (await c.send(bytes, { urgent: true })) {
-        session.beltStarted = false;
-        host.stopFailed(false);
-        return true;
+    stopping++;
+    try {
+      for (let attempt = 1; ; attempt++) {
+        // Control may have been lost before, or the treadmill just refused this Stop for it: ask again before every attempt
+        if (session.controlLost) void c.send(cmdRequestControl(), { urgent: true });
+        if (await c.send(bytes, { urgent: true })) {
+          session.stopSentWhileRunning = session.maybeRunning();
+          session.beltStarted = false;
+          host.stopFailed(false);
+          return true;
+        }
+        if (epoch !== mine || session.client !== c || !c.connected) return false;
+        // The first failure already tells the person: the belt may be moving, and the retries take seconds
+        if (attempt === 1) host.stopFailed(true);
+        if (attempt >= STOP_ATTEMPTS) return false;
+        await host.wait(STOP_RETRY_MS);
+        // A newer stop or pause and a lost connection happen during the wait; TypeScript does not see that
+        // oxlint-disable-next-line typescript/no-unnecessary-condition -- changed by other calls while awaiting
+        if (epoch !== mine || session.client !== c || !c.connected) return false;
       }
-      if (epoch !== mine || session.client !== c || !c.connected) return false;
-      if (attempt >= STOP_ATTEMPTS) break;
-      await host.wait(STOP_RETRY_MS);
-      // A newer start, stop or pause and a lost connection happen during the wait; TypeScript does not see that
-      // oxlint-disable-next-line typescript/no-unnecessary-condition -- changed by other calls while awaiting
-      if (epoch !== mine || session.client !== c || !c.connected) return false;
+    } finally {
+      stopping--;
     }
-    host.stopFailed(true);
-    return false;
   }
 
-  function stop(): Promise<boolean> {
-    leaveRunning('stop');
+  function stop(reason: 'stop' | 'console' = 'stop'): Promise<boolean> {
+    leaveRunning(reason);
     return sendStop(cmdStop());
   }
 
-  function pause(): Promise<boolean> {
-    leaveRunning('pause');
+  function pause(reason: 'pause' | 'console' = 'pause'): Promise<boolean> {
+    leaveRunning(reason);
     return sendStop(cmdPause());
   }
 
@@ -99,6 +108,8 @@ export function setupBelt(host: BeltHost) {
   async function start(): Promise<boolean> {
     const c = session.client;
     if (!c) return false;
+    // A Stop or Pause is still being sent (or sent again): it keeps its attempts, a Start would end them
+    if (stopping > 0) return false;
     // Nothing is touched: the belt runs on, and so does a ramp that may be going. An old reading counts only while the belt is
     // known to have been started and not stopped since: a treadmill that stops reporting at a standstill must not lock Start
     // (the same rule as controls.start, so the app never offers a Start that does nothing)
@@ -136,6 +147,7 @@ export function setupBelt(host: BeltHost) {
     if (epoch !== mine) return false;
     if (b) {
       session.beltStarted = true;
+      session.stopSentWhileRunning = false;
       phase.startRequested(host.now());
       if (chosen !== null) governor.request(chosen);
     }

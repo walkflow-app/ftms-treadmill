@@ -107,6 +107,34 @@ describe('Control Point responses', () => {
     expect(r.host.stopFailed).not.toHaveBeenCalled();
   });
 
+  it('a Stop refused for missing control (result 5) counts as control lost, so the next attempt asks for it first (#27 D)', () => {
+    const r = rig();
+    r.session.lastMeasured = 3;
+    r.reports.controlResponse({ requestOp: 0x08, result: 5 });
+    expect(r.session.controlLost).toBe(true);
+    expect(r.host.stopFailed).toHaveBeenCalledWith(true);
+  });
+
+  it('a Stop refused for another reason does not claim control was lost', () => {
+    const r = rig();
+    r.session.lastMeasured = 3;
+    r.reports.controlResponse({ requestOp: 0x08, result: 4 });
+    expect(r.session.controlLost).toBe(false);
+  });
+
+  it('a refused Stop with no reading yet while the belt was started warns: when in doubt it runs (#27 D)', () => {
+    const r = rig();
+    r.session.beltStarted = true;
+    r.reports.controlResponse({ requestOp: 0x08, result: 4 });
+    expect(r.host.stopFailed).toHaveBeenCalledWith(true);
+  });
+
+  it('a refused Stop with no reading and a belt never started is nothing to warn about', () => {
+    const r = rig();
+    r.reports.controlResponse({ requestOp: 0x08, result: 4 });
+    expect(r.host.stopFailed).not.toHaveBeenCalled();
+  });
+
   it('a speed the treadmill refused: the ramp ends and the app is told', () => {
     const r = rig();
     r.reports.controlResponse({ requestOp: 0x02, result: 3 });
