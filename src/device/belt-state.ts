@@ -13,6 +13,11 @@ export class BeltState {
   lastMeasuredAt = 0;
   /** The treadmill said that control was lost; the next stop asks for control first */
   controlLost = false;
+  /**
+   * A Stop or Pause was written while the belt may have been running. The treadmill's refusal comes after the write went
+   * through, when beltStarted is already false: this is what lets a refusal still count as "the belt may be running".
+   */
+  stopSentWhileRunning = false;
 
   connected(): boolean { return !!this.client?.connected; }
 
@@ -40,5 +45,6 @@ export class BeltState {
     this.beltStarted = false;
     this.lastMeasured = undefined;
     this.controlLost = false;
+    this.stopSentWhileRunning = false;
   }
 }

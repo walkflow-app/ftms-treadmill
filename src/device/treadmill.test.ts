@@ -82,6 +82,47 @@ describe('connecting', () => {
   });
 });
 
+describe('connect() called twice (#27 C)', () => {
+  /** A device whose connect() hangs until it is let go, then succeeds or fails */
+  function slowAdapter(dev: FakeTreadmill) {
+    let go!: (ok: boolean) => void;
+    const gate = new Promise<boolean>(r => { go = r; });
+    dev.connect = async () => { if (!(await gate)) throw new Error('gone'); dev.connected = true; };
+    const adapter: BleAdapter = { kind: 'slow', availability: async () => ({ ok: true }), requestDevice: async () => dev };
+    return { adapter, go };
+  }
+  const fastAdapter = (dev: FakeTreadmill): BleAdapter => ({ kind: 'fast', availability: async () => ({ ok: true }), requestDevice: async () => dev });
+
+  it('the first attempt failing late does not take the connection of the second', async () => {
+    const tm = createTreadmill({ clock: { now: () => 0, wait: async () => {} } });
+    const slow = slowAdapter(new FakeTreadmill());
+    const first = tm.connect(slow.adapter).catch(() => 'failed');
+    const dev = new FakeTreadmill();
+    await tm.connect(fastAdapter(dev));
+    slow.go(false);
+    expect(await first).toBe('failed');
+    expect(tm.state.connected).toBe(true);
+    dev.writes = [];
+    expect(await tm.stop()).toBe(true);
+    expect(dev.writes).toEqual(['08 01']);
+  });
+
+  it('the first attempt succeeding late does not change what the second one found out', async () => {
+    const tm = createTreadmill({ clock: { now: () => 0, wait: async () => {} } });
+    const slowDev = new FakeTreadmill();
+    slowDev.readable.set('1826/2ad4', [100, 0, 0xe8, 0x03, 10, 0]);
+    const slow = slowAdapter(slowDev);
+    const first = tm.connect(slow.adapter).catch(() => 'superseded');
+    const dev = new FakeTreadmill();
+    await tm.connect(fastAdapter(dev));
+    slow.go(true);
+    await first;
+    expect(tm.state.connected).toBe(true);
+    expect(tm.state.deviceRange).toEqual({ min: 1, max: 8 });
+    expect(slowDev.connected).toBe(false);
+  });
+});
+
 describe('the speed limit (promise 1)', () => {
   it('never commands above the limit', async () => {
     const { tm, dev } = await rig({ speedLimit: 4 });
@@ -618,6 +659,54 @@ describe('raw commands (experiment console)', () => {
     expect(ended).toHaveBeenCalledWith({ reason: 'console' });
     expect(tm.state.target).toBeNull();
     expect(dev.writes.at(-1)).toBe('08 01');
+  });
+
+  it('a raw Stop during a Start leaves nothing to start the belt after it (#27 B)', async () => {
+    const { tm, dev } = await rig();
+    let release!: () => void;
+    dev.writeImpl = d => (d[0] === 0x00 ? new Promise(r => { release = r; }) : Promise.resolve());
+    const starting = tm.start();
+    await Promise.resolve();
+    const raw = tm.sendRaw([0x08, 0x01]);
+    release();
+    expect(await starting).toBe(false);
+    await raw;
+    expect(dev.writes.slice(dev.writes.indexOf('08 01') + 1)).toEqual([]);
+  });
+
+  it('a raw Stop that does not get through is sent again and warns, like a Stop (#27 B)', async () => {
+    const { tm, dev } = await rig();
+    dev.speed(2);
+    dev.writeImpl = async () => { throw new Error('GATT busy'); };
+    const failed = vi.fn();
+    tm.on('stopFailed', failed);
+    expect(await tm.sendRaw([0x08, 0x01])).toEqual({ action: 'sent', ok: false });
+    expect(failed).toHaveBeenCalledWith(true);
+    expect(tm.state.stopFailed).toBe(true);
+  });
+
+  it('a Stop that went through but was refused afterwards (80 08 04) still warns when no speed was ever reported (#27 D)', async () => {
+    const { tm, dev } = await rig();
+    expect(await tm.start()).toBe(true);
+    expect(await tm.stop()).toBe(true);
+    dev.answer(0x08, 4);
+    expect(tm.state.stopFailed).toBe(true);
+  });
+
+  it('a Stop refused on a belt that was never started and never reported a speed warns nobody', async () => {
+    const { tm, dev } = await rig();
+    expect(await tm.stop()).toBe(true);
+    dev.answer(0x08, 4);
+    expect(tm.state.stopFailed).toBe(false);
+  });
+
+  it('a raw Pause is a Pause with the reason console', async () => {
+    const { tm, dev } = await rig();
+    const ended = vi.fn();
+    tm.on('ended', ended);
+    expect(await tm.sendRaw([0x08, 0x02])).toEqual({ action: 'sent', ok: true });
+    expect(ended).toHaveBeenCalledWith({ reason: 'console' });
+    expect(dev.writes.at(-1)).toBe('08 02');
   });
 
   it('anything that is not a byte is blocked, so the check sees what is sent (#24)', async () => {

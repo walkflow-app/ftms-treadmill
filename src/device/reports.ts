@@ -32,6 +32,8 @@ export interface ReportsHost {
 
 /** Control Point result code "Success" */
 const RESULT_OK = 1;
+/** Control Point result code "Control Not Permitted" */
+const RESULT_CONTROL_NOT_PERMITTED = 5;
 
 const MACHINE_ENDS: Partial<Record<MachineEvent['kind'], ReportedEnd>> = {
   stopped: 'machine-stopped',
@@ -85,8 +87,11 @@ export function setupReports(host: ReportsHost) {
     if (r.result === RESULT_OK) return;
     switch (r.requestOp) {
       case OP.STOP_PAUSE:
-        // A belt that stands has nothing to stop: some treadmills answer "failed" then
-        if ((session.lastMeasured ?? 0) > 0) host.stopFailed(true);
+        // Without control a Stop is refused: the next attempt asks for control first
+        if (r.result === RESULT_CONTROL_NOT_PERMITTED) session.controlLost = true;
+        // A belt that stands has nothing to stop: some treadmills answer "failed" then. With no reading yet, a belt that was
+        // started (or was when the Stop was sent: the answer comes after the write) counts as running: when in doubt it is
+        if (session.lastMeasured === undefined ? session.beltStarted || session.stopSentWhileRunning : session.lastMeasured > 0) host.stopFailed(true);
         break;
       case OP.SET_SPEED:
         governor.commandRefused();

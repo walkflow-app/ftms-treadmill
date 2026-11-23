@@ -100,8 +100,9 @@ The app has four codes of its own in the same style, for the limit it stores and
 
 Control lost and a standstill are not notices: the first is a Machine Status (`machineStatus` event), the second an `ended` reason.
 
-Only `connect` throws, with the adapter's own error (no device chosen, no FTMS). A failed write is a `TreadmillError`
-(`no-gatt`, `not-connected`, `write-timeout`), which the library catches itself and reports as `write-failed`. Machine Status and
+Only `connect` throws, with the adapter's own error (no device chosen, no FTMS), or a `TreadmillError` (`superseded`) when a
+newer `connect()` took over meanwhile. A failed write is a `TreadmillError`
+(`no-gatt`, `not-connected`, `write-timeout`; `superseded` is only thrown by `connect`), which the library catches itself and reports as `write-failed`. Machine Status and
 Control Point answers stay what the protocol says (`MachineEvent`, `ControlPointResponse`); the app describes them in its
 language. The `log` event carries protocol lines only (bytes sent, an answer that could not be read).
 
@@ -137,8 +138,11 @@ one of them is a `safety` commit and at least a minor version.
    speed in one step. After Start the speed asked for last on this connection (chosen while standing, or the one before a
    stop or pause) is ramped up to from there, once the belt moves.
 4. Stop and Pause go out ahead of everything queued, end a Start that is still being sent, ask for control first if it was
-   lost, and are sent up to `STOP_ATTEMPTS` times. If none went through, `state.stopFailed` is true.
-5. A refused Stop on a moving belt sets `stopFailed`; a refused speed ends the ramp.
+   lost (a Stop refused for missing control counts as lost: the next Stop asks first), and are sent up to `STOP_ATTEMPTS` times. A raw
+   Stop or Pause in the console is one of them. `start()` does not take over while a Stop or Pause is being sent: it sends
+   nothing and returns `false`. `state.stopFailed` is true from the first attempt that failed while connected, and false
+   again once one went through.
+5. A refused Stop on a belt that moves or, with no reading yet, was started sets `stopFailed`; a refused speed ends the ramp.
 6. A write that gets no answer is given up after `WRITE_TIMEOUT_MS`, so it cannot hold back a Stop.
 7. When the treadmill stops by itself (button, safety key) or the belt stands still while a speed is wanted (see
    [Standstill](#standstill)), the ramp is forgotten (a step of it still waiting to be written is withdrawn) and `ended`

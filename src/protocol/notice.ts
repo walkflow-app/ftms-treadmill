@@ -5,7 +5,7 @@
 import type { Range } from './ftms.ts';
 
 /** Why talking to the treadmill failed */
-export type TreadmillErrorCode = 'no-gatt' | 'not-connected' | 'write-timeout';
+export type TreadmillErrorCode = 'no-gatt' | 'not-connected' | 'write-timeout' | 'superseded';
 
 /** An error of the treadmill connection that the app can name in its own language */
 export class TreadmillError extends Error {
