@@ -146,6 +146,16 @@ and then ramps up to the last speed asked for on this connection, if any (a new 
 `state.target` is `null` after `disconnected`). `true` if both Request Control and Start went through; `false` if one
 failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent).
 
+Start is **not sent** when the lowest speed was not set: the write failed, the limit is below the treadmill's lowest speed
+(`no-allowed-speed`), or the treadmill refused it. It waits up to one second for the treadmill's answer to that speed; a
+treadmill that does not answer is let through, one that refuses it is not. `start()` then returns `false` and sends
+`start-speed-failed`.
+
+On a belt measured moving (`MOVING_KMH` or more) `start()` sends nothing, leaves a ramp alone, returns `false` and sends
+`start-belt-moving`: setting the lowest speed there would slow the belt down in one step. A reading counts when it is at most 5 s
+old, or older while the belt counts as started (`start()` or Machine Status 'started', and no stop since), so an app that
+calls `start()` after an `await` cannot do it; a treadmill that stops reporting once the belt stands does not lock Start.
+
 Check `tm.state.controls.start` before offering Start: it is `false` while the belt may still be moving, a start is under
 way or a program runs.
 
@@ -460,7 +470,8 @@ function noticeText(n: Notice): string {
     case 'no-allowed-speed': return `No speed allowed (${n.min}–${n.max} km/h)`;
     case 'speed-held-until-moving': return `${n.kmh} km/h once the belt moves`;
     case 'ramp-aborted': return 'Speed change ended';
-    case 'start-speed-failed': return 'Start speed could not be set';
+    case 'start-speed-failed': return 'Start speed could not be set, not started';
+    case 'start-belt-moving': return 'The belt is already moving';
     case 'speed-refused': return 'The treadmill refused the speed';
     case 'limit-lowered': return `Limit lowered: now ${n.kmh} km/h`;
     case 'limit-unconfirmed': return `${n.requested} km/h needs a confirmation; ${n.applied} km/h for now`;
@@ -490,7 +501,8 @@ tm.on('notice', n => console.log(noticeText(n)));
 | `no-allowed-speed` | `min`, `max` | the limit is below the treadmill's lowest speed: nothing can be sent |
 | `speed-held-until-moving` | `kmh` | the speed is held until the belt moves |
 | `ramp-aborted` | | a speed command of the ramp could not be written; the ramp ended (a speed the treadmill refuses is `speed-refused`) |
-| `start-speed-failed` | | the lowest speed could not be set before Start (Start is sent anyway) |
+| `start-speed-failed` | | the lowest speed could not be set or was refused, so no Start was sent (`start()` returned `false`) |
+| `start-belt-moving` | | `start()` on a belt measured moving: nothing was sent (`start()` returned `false`) |
 | `speed-refused` | | the treadmill refused a speed |
 | `limit-lowered` | `kmh` | the target came down to a lowered limit |
 | `limit-unconfirmed` | `requested`, `applied` | a limit above 6 km/h without `limitConfirmed` |

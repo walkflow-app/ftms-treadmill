@@ -134,8 +134,9 @@ export interface Treadmill {
   /** Ends the connection; disconnected follows. Does not stop the belt: stop first if it may be running. */
   disconnect(): void;
   /**
-   * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for.
-   * @returns false if a command failed, or a Stop or Pause came in meanwhile (then nothing more of it is sent)
+   * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for. No Start is sent if the
+   * lowest speed was not set or refused (start-speed-failed), and nothing at all on a belt measured moving (start-belt-moving).
+   * @returns false if a command failed, nothing was sent for one of those reasons, or a Stop or Pause came in meanwhile
    */
   start(): Promise<boolean>;
   /**
@@ -183,6 +184,9 @@ export interface Treadmill {
    */
   on<E extends keyof TreadmillEventMap>(event: E, listener: (payload: TreadmillEventMap[E]) => void): () => void;
 }
+
+/** How long Start waits for the treadmill's answer to the start speed; one that gives none is let through */
+const SPEED_ANSWER_MS = 1000;
 
 /** Before the treadmill says otherwise */
 const DEFAULT_DEVICE_RANGE = { min: 1.0, max: 12.0 };
@@ -258,6 +262,23 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     emit('stopFailed', failed);
   }
 
+  /** Who waits for the treadmill's answer to a Set Speed (the start speed before Start) */
+  const speedAnswers = new Set<(result: number) => void>();
+  function expectSpeedAnswer() {
+    let answered!: (result: number | null) => void;
+    const got = new Promise<number | null>(resolve => { answered = resolve; });
+    const listener = (result: number) => answered(result);
+    speedAnswers.add(listener);
+    return {
+      wait: async () => {
+        const result = await Promise.race([got, clock.wait(SPEED_ANSWER_MS).then(() => null)]);
+        speedAnswers.delete(listener);
+        return result;
+      },
+      drop: () => { speedAnswers.delete(listener); },
+    };
+  }
+
   const belt = setupBelt({
     session, phase, governor, standstill, now,
     wanted: () => wanted,
@@ -265,6 +286,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     notice,
     wait: ms => clock.wait(ms),
     stopFailed: setStopFailed,
+    expectSpeedAnswer,
   });
 
   const reports = setupReports({
@@ -278,7 +300,10 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       if (s.event?.kind === 'started') newRun();
       emit('machineStatus', s);
     },
-    controlResponse: r => emit('controlResponse', r),
+    controlResponse: r => {
+      emit('controlResponse', r);
+      if (r.requestOp === OP.SET_SPEED) for (const answer of speedAnswers) answer(r.result);
+    },
   });
 
   const effectiveMax = () => Math.min(deviceRange.max, speedLimit);

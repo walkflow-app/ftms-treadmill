@@ -64,7 +64,8 @@ await tm.connect(new SimulatorAdapter());     // a simulated FTMS treadmill, als
 1. Nothing above the speed limit (or the treadmill's maximum, whichever is lower) is ever sent. A limit above 6 km/h counts
    only with `limitConfirmed: true`.
 2. The speed changes by at most `maxStep` per command, at most once every 1.5 s.
-3. Before Start the lowest speed is set, so a treadmill does not jump back to the speed it last had.
+3. Before Start the lowest speed is set, so a treadmill does not jump back to the speed it last had; if that fails, no Start
+   is sent, and `start()` on a moving belt sends nothing.
 4. Stop and Pause go out ahead of everything queued, and are sent up to 3 times. If none got through, `state.stopFailed`
    is true and the `stopFailed` event says so.
 5. When the treadmill stops by itself (its button, the safety key), the ramp is forgotten and `ended` is sent (once per run of the belt).

@@ -340,7 +340,7 @@ export function beltMaybeRunning(s: { startedByApp: boolean; lastMeasuredKmh: nu
 }
 
 /** A speed reading older than this does not count as known: a treadmill that stops reporting must not lock Start */
-const READING_FRESH_MS = 5000;
+export const READING_FRESH_MS = 5000;
 
 /**
  * Which of the three control buttons can be pressed. Stop can always be pressed while there is a connection: nothing

@@ -198,6 +198,72 @@ describe('start (promise 3) and stop (promise 4)', () => {
     expect(tm.state.belt).toBe('starting');
   });
 
+  it('a start speed that could not be written: no Start, false, a notice', async () => {
+    const { tm, dev, notices } = await rig();
+    dev.writeImpl = async d => { if (hex(dataView(Array.from(d))) === '02 64 00') throw new Error('GATT busy'); };
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual(['00']);
+    expect(notices).toContainEqual({ code: 'start-speed-failed' });
+    expect(tm.state.belt).not.toBe('starting');
+  });
+
+  it('a start speed the treadmill refuses (80 02 03) between Set Speed and Start: no Start', async () => {
+    const { tm, dev, notices } = await rig();
+    dev.writeImpl = async d => { if (d[0] === 0x02) queueMicrotask(() => dev.answer(0x02, 3)); };
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual(['00', '02 64 00']);
+    expect(notices).toContainEqual({ code: 'speed-refused' });
+    expect(notices).toContainEqual({ code: 'start-speed-failed' });
+  });
+
+  it('a start speed the treadmill accepts (80 02 01) is followed by Start', async () => {
+    const { tm, dev } = await rig();
+    dev.writeImpl = async d => { if (d[0] === 0x02) queueMicrotask(() => dev.answer(0x02, 1)); };
+    expect(await tm.start()).toBe(true);
+    expect(dev.writes).toEqual(['00', '02 64 00', '07']);
+  });
+
+  it('a limit below the lowest speed of the treadmill: no Start', async () => {
+    const dev = new FakeTreadmill();
+    dev.readable.set('1826/2ad4', [200, 0, 0x20, 0x03, 10, 0]); // lowest speed 2 km/h
+    const tm = createTreadmill({ clock: { now: () => 0, wait: async () => {} }, speedLimit: 1.5 });
+    const notices: Notice[] = [];
+    tm.on('notice', n => notices.push(n));
+    await tm.connect({ kind: 'fake', availability: async () => ({ ok: true }), requestDevice: async () => dev });
+    dev.writes = [];
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual(['00']);
+    expect(notices).toContainEqual({ code: 'no-allowed-speed', min: 2, max: 1.5 });
+    expect(notices).toContainEqual({ code: 'start-speed-failed' });
+  });
+
+  it('a treadmill that stopped reporting after a last slow reading can be started again', async () => {
+    const { tm, dev } = await rig();
+    dev.speed(0.5);
+    clock = 6000;
+    expect(await tm.start()).toBe(true);
+    expect(dev.writes).toEqual(['00', '02 64 00', '07']);
+  });
+
+  it('a late answer after the wait is over has no effect, and nobody is left listening', async () => {
+    const { tm, dev } = await rig();
+    expect(await tm.start()).toBe(true); // no answer: the clock's wait ends at once
+    dev.answer(0x02, 3);
+    expect(dev.writes).toEqual(['00', '02 64 00', '07']);
+  });
+
+  it('on a moving belt: no Set Speed below the speed of the belt, no Start (the readings may be old)', async () => {
+    const { tm, dev, notices } = await rig();
+    await tm.start();
+    dev.speed(5);
+    dev.writes = [];
+    clock = 60_000;
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual([]);
+    expect(notices).toContainEqual({ code: 'start-belt-moving' });
+    expect(tm.state.belt).not.toBe('starting');
+  });
+
   it.each(['stop', 'pause'] as const)('after %s, Start ramps up again to the speed the belt had, from the lowest speed', async how => {
     const { tm, dev } = await rig();
     dev.speed(3.5);

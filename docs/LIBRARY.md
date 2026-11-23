@@ -93,7 +93,7 @@ The codes are in `src/protocol/notice.ts`; each one with its values and an examp
 | Writing | `write-dropped`, `write-failed` (with `no-gatt`, `not-connected`, `write-timeout` or the message of another error) |
 | Governor | `no-allowed-speed`, `speed-held-until-moving`, `ramp-aborted` |
 | Console (returned by `checkConsoleCommand`) | `console-bad-bytes`, `console-set-speed-length`, `console-over-limit`, `console-jump`, `console-too-soon`, `console-heart-rate` |
-| Start, stop and limits (the facade) | `start-speed-failed`, `speed-refused`, `limit-lowered`, `limit-unconfirmed` (see below) |
+| Start, stop and limits (the facade) | `start-speed-failed`, `start-belt-moving`, `speed-refused`, `limit-lowered`, `limit-unconfirmed` (see below) |
 
 The app has four codes of its own in the same style, for the limit it stores and edits (`src/core/safety/limit-settings.ts`:
 `limit-not-a-number`, `limit-out-of-range`, `limit-stored-unconfirmed`, `limit-legacy-not-adopted`); the library never sends them.
@@ -129,9 +129,12 @@ one of them is a `safety` commit and at least a minor version.
 2. The speed changes by at most `maxStep` per command and not more often than every `RAMP_INTERVAL_MS`, counted from when
    the previous command was written. One exception: when the limit is lowered below the speed of the belt, the new limit
    is sent in one command (the limit applies at once).
-3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. After Start the
-   speed asked for last on this connection (chosen while standing, or the one before a stop or pause) is ramped up to from
-   there, once the belt moves.
+3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. If that speed
+   could not be set (the write failed, the limit leaves no allowed speed, or the treadmill refused it), no Start is sent:
+   `start()` returns `false` with `start-speed-failed`. A treadmill that does not answer within a second is let through.
+   `start()` on a belt measured moving (a reading up to 5 s old, or an older one while the belt counts as started) sends nothing (`start-belt-moving`), so the belt is never dropped to the lowest
+   speed in one step. After Start the speed asked for last on this connection (chosen while standing, or the one before a
+   stop or pause) is ramped up to from there, once the belt moves.
 4. Stop and Pause go out ahead of everything queued, end a Start that is still being sent, ask for control first if it was
    lost, and are sent up to `STOP_ATTEMPTS` times. If none went through, `state.stopFailed` is true.
 5. A refused Stop on a moving belt sets `stopFailed`; a refused speed ends the ramp.

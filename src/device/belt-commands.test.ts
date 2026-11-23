@@ -6,7 +6,7 @@ import { setupBelt, STOP_ATTEMPTS, type BeltHost } from './belt-commands.ts';
 import { BeltState } from './belt-state.ts';
 
 /** Everything the belt touches, in the order it happens */
-function rig(opts: { ok?: boolean | ((hexBytes: string) => boolean | Promise<boolean>); client?: boolean; startSpeedOk?: boolean; target?: number; wanted?: number } = {}) {
+function rig(opts: { ok?: boolean | ((hexBytes: string) => boolean | Promise<boolean>); client?: boolean; startSpeedOk?: boolean; answer?: number | null; measured?: number; target?: number; wanted?: number } = {}) {
   const calls: string[] = [];
   const session = new BeltState();
   if (opts.client !== false) {
@@ -34,9 +34,12 @@ function rig(opts: { ok?: boolean | ((hexBytes: string) => boolean | Promise<boo
   const log = vi.fn(() => calls.push('notice'));
   const wait = vi.fn(async (_ms: number) => {});
   const stopFailed = vi.fn((_failed: boolean) => {});
-  const belt = setupBelt({ session, phase: banner, governor, standstill, now: () => 1234, wanted: () => opts.wanted ?? null, ended: abortRun, notice: log, wait, stopFailed });
+  if (opts.measured !== undefined) session.lastMeasured = opts.measured;
+  const dropAnswer = vi.fn();
+  const expectSpeedAnswer = vi.fn((): { wait(): Promise<number | null>; drop(): void } => ({ wait: async () => (opts.answer === undefined ? 1 : opts.answer), drop: dropAnswer }));
+  const belt = setupBelt({ session, phase: banner, governor, standstill, now: () => 1234, wanted: () => opts.wanted ?? null, ended: abortRun, notice: log, wait, stopFailed, expectSpeedAnswer });
   const sends = () => calls.filter(c => c.startsWith('send'));
-  return { belt, session, calls, sends, banner, abortRun, governor, log, wait, stopFailed };
+  return { belt, session, calls, sends, banner, abortRun, governor, log, wait, stopFailed, standstill, dropAnswer, expectSpeedAnswer };
 }
 
 describe('stop', () => {
@@ -141,13 +144,88 @@ describe('start', () => {
     expect(r.session.beltStarted).toBe(true);
   });
 
-  it('if the treadmill does not take the starting speed, it still starts, but says so in the log', async () => {
+  it('if the starting speed was not set, no Start is sent: the treadmill would run up to its last speed (promise 3)', async () => {
     const r = rig({ startSpeedOk: false });
-    expect(await r.belt.start()).toBe(true);
-    expect(r.calls).toContain('send 07');
+    expect(await r.belt.start()).toBe(false);
+    expect(r.sends()).toEqual(['send 00']);
     expect(r.log).toHaveBeenCalledWith({ code: 'start-speed-failed' });
     expect(r.log).toHaveBeenCalledTimes(1);
-    expect(r.session.beltStarted).toBe(true);
+    expect(r.session.beltStarted).toBe(false);
+    expect(r.banner.startRequested).not.toHaveBeenCalled();
+    expect(r.governor.request).not.toHaveBeenCalled();
+  });
+
+  it('if the treadmill refused the starting speed, no Start is sent', async () => {
+    const r = rig({ answer: 3 });
+    expect(await r.belt.start()).toBe(false);
+    expect(r.sends()).toEqual(['send 00']);
+    expect(r.log).toHaveBeenCalledWith({ code: 'start-speed-failed' });
+    expect(r.session.beltStarted).toBe(false);
+    expect(r.governor.request).not.toHaveBeenCalled();
+  });
+
+  it('a treadmill that gives no answer to the starting speed in time still gets its Start', async () => {
+    const r = rig({ answer: null, target: 4 });
+    expect(await r.belt.start()).toBe(true);
+    expect(r.sends()).toEqual(['send 00', 'send 07']);
+    expect(r.log).not.toHaveBeenCalled();
+  });
+
+  it('listens for the answer before Set Speed is written, so a fast answer is not missed', async () => {
+    const r = rig();
+    r.expectSpeedAnswer.mockImplementationOnce(() => { r.calls.push('expect answer'); return { wait: async () => 1, drop: r.dropAnswer }; });
+    await r.belt.start();
+    expect(r.calls.indexOf('expect answer')).toBeLessThan(r.calls.indexOf('governor startSpeed'));
+  });
+
+  it('gives the answer up when the speed could not be written at all', async () => {
+    const r = rig({ startSpeedOk: false });
+    await r.belt.start();
+    expect(r.dropAnswer).toHaveBeenCalled();
+  });
+
+  it('a stop while waiting for the answer to the starting speed: Start is not sent', async () => {
+    const r = rig();
+    let stopping: Promise<boolean> | undefined;
+    r.expectSpeedAnswer.mockImplementationOnce(() => ({ wait: async () => { stopping = r.belt.stop(); return 1; }, drop: r.dropAnswer }));
+    expect(await r.belt.start()).toBe(false);
+    await stopping;
+    expect(r.sends()).toEqual(['send 00', 'send 08 01 urgent']);
+  });
+
+  it.each([5, 0.3])('on a belt measured moving (%s km/h) nothing is sent and the ramp is left alone', async kmh => {
+    const r = rig({ measured: kmh, target: 6 });
+    expect(await r.belt.start()).toBe(false);
+    expect(r.calls).toEqual(['notice']);
+    expect(r.log).toHaveBeenCalledWith({ code: 'start-belt-moving' });
+    expect(r.governor.reset).not.toHaveBeenCalled();
+    expect(r.governor.startSpeed).not.toHaveBeenCalled();
+  });
+
+  it('a belt measured moving long ago, and not known to be started, does not lock Start: a treadmill may stop reporting', async () => {
+    const r = rig({ measured: 0.5 });
+    r.session.lastMeasuredAt = 1234 - 6000;
+    expect(await r.belt.start()).toBe(true);
+  });
+
+  it('an old reading of a moving belt that counts as started still blocks Start', async () => {
+    const r = rig({ measured: 5 });
+    r.session.lastMeasuredAt = 1234 - 60_000;
+    r.session.beltStarted = true;
+    expect(await r.belt.start()).toBe(false);
+    expect(r.sends()).toEqual([]);
+  });
+
+  it('on a belt measured standing, it starts', async () => {
+    const r = rig({ measured: 0.2 });
+    expect(await r.belt.start()).toBe(true);
+  });
+
+  it('does not count a start that was refused as one that was sent: a Stop after it still goes', async () => {
+    const r = rig({ measured: 5 });
+    await r.belt.start();
+    expect(await r.belt.stop()).toBe(true);
+    expect(r.sends()).toEqual(['send 08 01 urgent']);
   });
 
   it('does not log anything when the starting speed was set', async () => {
