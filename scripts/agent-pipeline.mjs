@@ -23,6 +23,9 @@ export const REQUIRED_CHECKS = ['test', 'safety-gate'];
 const KICK_MESSAGE = 'ci: start the checks (agent pipeline)';
 export const LIMITS = { reviews: 4, mergesPerDay: 5, unreviewedLines: 30, staleHours: 6 };
 const MEMBERS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+/** The association a pull request or issue shows says CONTRIBUTOR for a member who keeps the membership private. So a login that is not a member by
+ *  its association is asked of the organisation (the writer's token, the app needs "Members: read"). Anything but a clear yes counts as outside. */
+export const resolveMember = (login, association, isMember) => (MEMBERS.has(association) ? association : login && isMember(login) ? 'MEMBER' : association);
 const VERDICTS = ['OK', 'OK with remarks', 'changes needed', 'blocking'];
 /** The review state each verdict is submitted as; a marker that does not match its review is not believed */
 const STATE = { OK: 'APPROVED', 'OK with remarks': 'COMMENTED', 'changes needed': 'CHANGES_REQUESTED', blocking: 'CHANGES_REQUESTED' };
@@ -228,10 +231,20 @@ const gh = (args, { token, input } = {}) => execFileSync('gh', args, {
 const api = (path, opts) => JSON.parse(gh(['api', path], opts) || 'null');
 const pages = path => JSON.parse(gh(['api', '--paginate', '--slurp', path])).flat();
 
+const memberCache = new Map();
+function isOrgMember(login) {
+  if (!memberCache.has(login)) {
+    let yes = false;
+    try { gh(['api', '--silent', `orgs/${REPO.split('/')[0]}/members/${login}`], { token: process.env.WRITER_TOKEN }); yes = true; } catch { /* 404, 302, no permission: not a member */ }
+    memberCache.set(login, yes);
+  }
+  return memberCache.get(login);
+}
+
 function readState(n, pipeline) {
   const p = api(`repos/${REPO}/pulls/${n}`);
   const head = p.head.sha;
-  const q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeable closingIssuesReferences(first:20){nodes{authorAssociation}}}}}`;
+  const q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){mergeable closingIssuesReferences(first:20){nodes{authorAssociation author{login}}}}}}`;
   const [owner, name] = REPO.split('/');
   const g = JSON.parse(gh(['api', 'graphql', '-f', `query=${q}`, '-f', `o=${owner}`, '-f', `r=${name}`, '-F', `n=${n}`])).data.repository.pullRequest;
   const reviews = pages(`repos/${REPO}/pulls/${n}/reviews?per_page=100`).map(r => ({
@@ -265,11 +278,11 @@ function readState(n, pipeline) {
     pipeline,
     pr: {
       number: n, draft: p.draft, headRef: p.head.ref, headSha: head, headRepo: p.head.repo?.full_name, repo: REPO,
-      author: { login: p.user.login, type: p.user.type }, authorAssociation: p.author_association, title: p.title,
+      author: { login: p.user.login, type: p.user.type }, authorAssociation: resolveMember(p.user.login, p.author_association, isOrgMember), title: p.title,
       labels: p.labels.map(l => l.name),
     },
     files: pages(`repos/${REPO}/pulls/${n}/files?per_page=100`),
-    issueAuthors: g.closingIssuesReferences.nodes.map(i => i.authorAssociation),
+    issueAuthors: g.closingIssuesReferences.nodes.map(i => resolveMember(i.author?.login, i.authorAssociation, isOrgMember)),
     reviews,
     comments: pages(`repos/${REPO}/issues/${n}/comments?per_page=100`).map(c => ({ user: c.user?.login, body: c.body })),
     checks,
