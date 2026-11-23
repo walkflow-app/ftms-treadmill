@@ -183,6 +183,8 @@ export function decide(s) {
       })();
     if (!small) {
       if (s.running.review) return out('wait', 'the review is running');
+      // A review run that failed (not one that found something) is started again, once: the same head is never kicked twice
+      if (s.reviewFailed && !s.headKicked) return out('kick', 'the review of the head commit failed: start it again', { sha: pr.headSha });
       if (counted >= LIMITS.reviews) return out('hold', `${LIMITS.reviews} reviews and still not done`);
       return stale ? out('hold', `no complete review of ${pr.headSha.slice(0, 7)} after ${LIMITS.staleHours} hours`)
         : out('wait', 'waiting for the review of the head commit');
@@ -209,6 +211,16 @@ export function decide(s) {
 /** The fix runs that failed since the label came off: a hand-back starts again with one try and one retry */
 export const failedFixRuns = (runs, reset) =>
   runs.filter(r => r.status === 'completed' && !['success', 'skipped'].includes(r.conclusion) && (!reset || r.created_at > reset)).length;
+
+/**
+ * How old the head commit is for the pipeline, in hours: since its first workflow run (or its commit when nothing ran: a commit
+ * can be pushed days later), but not before a person took `stuck` or `needs-maintainer` off, which hands the pull request
+ * back to the agents with a new window. `now` in ms, dates ISO strings.
+ */
+export const headAge = (now, runDates, commitDate, resetAt) => {
+  const start = runDates.length ? Math.min(...runDates.map(d => Date.parse(d))) : Date.parse(commitDate);
+  return (now - Math.max(start, resetAt ? Date.parse(resetAt) : 0)) / 3.6e6;
+};
 
 /** The label a hold gets: `needs-maintainer` for the rules themselves (the stop list), `stuck` for everything else (the PM looks) */
 export const holdLabel = d => d.label ?? 'stuck';
@@ -298,8 +310,10 @@ function readState(n, pipeline) {
     mergedToday,
     failedFixes: failedFixRuns(fixRuns, reset),
     headKicked: commit.commit.message.startsWith(KICK_MESSAGE),
-    // Since the commit was pushed (its first workflow run), not since it was made: a commit can be pushed days later
-    headAgeHours: (Date.now() - Math.min(...headRuns.map(r => Date.parse(r.created_at)), headRuns.length ? Infinity : Date.parse(commit.commit.committer.date))) / 3.6e6,
+    reviewFailed: headRuns.some(r => r.name === 'Agent review' && r.status === 'completed'
+      && ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure'].includes(r.conclusion)),
+    // Since the commit was pushed (its first workflow run), not since it was made, and not before `stuck` was taken off
+    headAgeHours: headAge(Date.now(), headRuns.map(r => r.created_at), commit.commit.committer.date, reset),
   };
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain script without types, also run by node in CI
-import { checkFix, classify, decide, failedFixRuns, holdLabel, LIMITS, marker, parseVerdict, quiet, resolveMember, reviewEvent, reviewModels, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
+import { checkFix, classify, decide, failedFixRuns, headAge, holdLabel, LIMITS, marker, parseVerdict, quiet, resolveMember, reviewEvent, reviewModels, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
 // @ts-expect-error plain script without types, also run by node in CI
 import { confirms, owners, releaseGate } from '../scripts/release-gate.mjs';
 
@@ -38,6 +38,7 @@ interface State {
   headAgeHours: number;
   failedFixes: number;
   headKicked: boolean;
+  reviewFailed: boolean;
 }
 
 /** A pull request that is reviewed OK, green and mergeable; each test changes one thing */
@@ -63,6 +64,7 @@ function state(change: (s: State) => void = () => {}) {
     headAgeHours: 1,
     failedFixes: 0,
     headKicked: false,
+    reviewFailed: false,
   };
   change(s);
   return decide(s);
@@ -208,6 +210,19 @@ describe('agent pipeline: what happens next', () => {
     expect(fromClaude(s => { s.checks = { 'safety-gate': 'success' }; s.reviews = []; }).action).toBe('wait');
   });
 
+  it('starts a review that failed once, and never the same head twice', () => {
+    const failed = (change: (s: State) => void = () => {}) => state(s => { s.reviews = []; s.reviewFailed = true; change(s); });
+    expect(failed()).toMatchObject({ action: 'kick', sha: HEAD });
+    // Whoever the author is: it is the review that failed, not the checks
+    expect(failed(s => { s.pr.author = { login: 'someone', type: 'User' }; s.pr.headRef = 'claude/issue-9'; }).action).toBe('kick');
+    // A kick that did not help is not repeated: the clock runs out and the pull request is stuck
+    expect(failed(s => { s.headKicked = true; }).action).toBe('wait');
+    expect(failed(s => { s.headKicked = true; s.headAgeHours = LIMITS.staleHours + 1; }).action).toBe('hold');
+    // A review that is running, or a review of the head that is there, is left alone
+    expect(failed(s => { s.running.review = true; }).action).toBe('wait');
+    expect(state(s => { s.reviewFailed = true; }).action).toBe('merge');
+  });
+
   it('never kicks the same head twice: a kick that started nothing is left for a person', () => {
     const fromClaude = (change: (s: State) => void) => state(s => {
       s.pr.author = { login: 'github-actions[bot]', type: 'Bot' }; s.pr.headRef = 'claude/issue-12'; s.checks = {}; s.headKicked = true; change(s);
@@ -348,6 +363,23 @@ describe('agent pipeline: what happens next', () => {
 
   it('at most a few agent merges a day', () => {
     expect(state(s => { s.mergedToday = LIMITS.mergesPerDay; }).action).toBe('wait');
+  });
+});
+
+describe('agent pipeline: the clock of a head commit', () => {
+  const hours = (h: number) => new Date(Date.UTC(2026, 10, 23, 12) - h * 3.6e6).toISOString();
+  const NOW = Date.UTC(2026, 10, 23, 12);
+
+  it('runs from the first workflow run of the head, or its commit when nothing ran', () => {
+    expect(headAge(NOW, [hours(10), hours(8)], hours(30), null)).toBeCloseTo(10);
+    expect(headAge(NOW, [], hours(30), null)).toBeCloseTo(30);
+  });
+
+  it('starts again when `stuck` or `needs-maintainer` is taken off: the agents get a new window', () => {
+    expect(headAge(NOW, [hours(10)], hours(30), hours(1))).toBeCloseTo(1);
+    expect(headAge(NOW, [], hours(30), hours(2))).toBeCloseTo(2);
+    // A label taken off before the head was pushed changes nothing
+    expect(headAge(NOW, [hours(3)], hours(30), hours(9))).toBeCloseTo(3);
   });
 });
 
