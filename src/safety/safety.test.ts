@@ -123,6 +123,54 @@ describe('SpeedGovernor', () => {
     expect(RAMP_INTERVAL_MS).toBe(1500);
   });
 
+  describe('after a stop the belt coasts down (#25)', () => {
+    it('holds a target through every reading of the decelerating belt', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      for (const kmh of [3.5, 2.5, 1.5, 0.6, 0.2]) {
+        gov.noteMeasured(kmh);
+        gov.request(5);
+        await vi.advanceTimersByTimeAsync(2000);
+      }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+    });
+
+    it('a belt seen standing is a new run once it moves again', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(2);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent).toEqual([]);
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent).toEqual([[0, 1.5]]);
+    });
+
+    it('newRun ends the wait without the belt standing', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(2);
+      gov.newRun();
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent.length).toBe(1);
+    });
+
+    it('a plain reset (start, new connection) does not wait', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.request(2);
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent.length).toBe(1);
+    });
+  });
+
   it('a small change goes out immediately', async () => {
     const { gov, sent } = make();
     gov.noteMeasured(2);

@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'newRun' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -53,7 +53,7 @@ export function setupReports(host: ReportsHost) {
       governor.noteMeasured(r.speed);
       if (standstill.feed(r.speed, now) && host.programActive()) {
         host.ended('standstill');
-        governor.reset();
+        governor.reset(true);
       }
     }
     host.data(r);
@@ -69,10 +69,11 @@ export function setupReports(host: ReportsHost) {
       session.beltStarted = false;
       host.ended(end);
       // Also withdraws a speed command of the ramp that still waits to be written (governor.reset, SpeedGovernor.pump)
-      governor.reset();
+      governor.reset(true); // the belt coasts down: nothing is sent until it stands and a new run begins
       standstill.disarm();
     } else if (e.kind === 'started') {
       session.beltStarted = true;
+      governor.newRun();
     } else if (e.kind === 'control-lost') {
       session.controlLost = true;
     }

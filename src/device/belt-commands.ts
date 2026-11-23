@@ -53,7 +53,8 @@ export function setupBelt(host: BeltHost) {
     epoch++;
     phase.stopRequested(host.now());
     host.ended(reason);
-    governor.reset();
+    // The belt coasts down: nothing is sent until it stands and a new run begins
+    governor.reset(true);
     standstill.disarm();
   }
 

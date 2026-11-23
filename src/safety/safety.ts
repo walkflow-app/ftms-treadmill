@@ -3,6 +3,7 @@
 
 import { decodeSetSpeed, OP } from '../protocol/ftms.ts';
 import type { ConsoleBlock, Notice } from '../protocol/notice.ts';
+import { STANDING_KMH } from './belt-phase.ts';
 
 const EPS = 1e-9;
 
@@ -125,6 +126,8 @@ export class SpeedGovernor {
   private gen = 0;
   /** null: not known yet (nothing measured, no reset), which holds nothing */
   private moving: boolean | null = null;
+  /** A stop was sent or reported and the belt was not seen standing since: nothing is sent, however fast it still reports */
+  private coasting = false;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -189,8 +192,11 @@ export class SpeedGovernor {
         if (at - this.over.first >= CONFIRM_MS) overConfirmed = true;
       }
     }
+    // After a stop the belt decelerates through readings above MOVING_KMH: that is no new run. Only a belt that was seen
+    // standing ends the wait; from then on a belt that moves is a new run (a Start, or a belt started on the treadmill)
+    if (this.coasting && kmh < STANDING_KMH) this.coasting = false;
     const was = this.moving;
-    this.moving = kmh >= MOVING_KMH;
+    this.moving = !this.coasting && kmh >= MOVING_KMH;
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
     if ((confirmedNow || overConfirmed) && this.limitPending) {
@@ -348,8 +354,18 @@ export class SpeedGovernor {
     this.last = null;
   }
 
-  /** Additionally forget the last command and measured value (after stop, start, disconnect). */
-  reset() {
+  /** A new run begins (Start, a Machine Status "started"): the belt is no longer waited for to stand. */
+  newRun() {
+    this.coasting = false;
+  }
+
+  /**
+   * Additionally forget the last command and measured value (after stop, start, disconnect).
+   * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (a reading below STANDING_KMH)
+   * or a new run begins (reset without afterStop, newRun).
+   */
+  reset(afterStop = false) {
+    this.coasting = afterStop;
     this.cancel();
     this.last = null;
     this.measured = null;

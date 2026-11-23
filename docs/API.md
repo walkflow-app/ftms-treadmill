@@ -222,7 +222,10 @@ Sets the speed to go to. Returns the target it will actually ramp to (inside the
 
 How it gets there: in steps of at most `maxStep`, one command at most every `RAMP_INTERVAL_MS` (1.5 s), only while the
 belt moves. Before Start, or while the belt still stands, the speed is held (`speed-held-until-moving`) and ramped to
-once it moves.
+once it moves. After a stop of any kind (`stop()`, `pause()`, a raw Stop, the treadmill's own stop or safety key, a standstill
+end) the belt coasts down while it still reports speeds above 0: nothing is sent then either. The speed asked for is
+held until the belt was seen standing (below 0.1 km/h) or a new run begins (`start()`, a raw Start, a Machine Status
+`started`), and a moving belt after that.
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).

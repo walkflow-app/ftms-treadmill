@@ -14,6 +14,7 @@ function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   } satisfies ReportsHost['phase'];
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
+    newRun: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;

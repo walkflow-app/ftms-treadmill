@@ -764,3 +764,64 @@ describe('raw commands (experiment console)', () => {
     expect(await tm.sendRaw([0x00])).toEqual({ action: 'not-connected' });
   });
 });
+
+describe('nothing is set while the belt coasts down after a stop (#25)', () => {
+  const flush = () => new Promise(r => setTimeout(r, 5));
+  const setSpeeds = (dev: FakeTreadmill) => dev.writes.filter(w => w.startsWith('02'));
+
+  async function coasting(how: 'stop' | 'pause' | 'machine-stopped' | 'safety-key' | 'raw-stop') {
+    const r = await rig();
+    r.dev.speed(4);
+    r.tm.setSpeed(4);
+    clock += 10_000;
+    await flush();
+    if (how === 'stop') await r.tm.stop();
+    else if (how === 'pause') await r.tm.pause();
+    else if (how === 'raw-stop') await r.tm.sendRaw([0x08, 0x01]);
+    else if (how === 'machine-stopped') r.dev.machineStatus(0x02, 0x01);
+    else r.dev.machineStatus(0x03);
+    r.dev.writes = [];
+    return r;
+  }
+
+  it.each(['stop', 'pause', 'machine-stopped', 'safety-key', 'raw-stop'] as const)(
+    'after %s, a speed asked for while the belt decelerates is held, not written', async how => {
+      const { tm, dev } = await coasting(how);
+      for (const kmh of [3.5, 2.5, 1.5, 0.6]) { dev.speed(kmh); tm.setSpeed(5); clock += 2000; }
+      clock += 5000;
+      dev.speed(0.2);
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
+  it('a speed held through the coast-down goes out only after Start and a moving belt', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0);
+    clock += 5000;
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    await tm.start();
+    expect(setSpeeds(dev)).toEqual(['02 64 00']); // only the start speed
+    dev.writes = [];
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev).length).toBeGreaterThan(0);
+  });
+
+  it('a belt that stands and is started on the treadmill is a new run: the held speed is ramped', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0);
+    dev.machineStatus(0x04);
+    dev.speed(1);
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev).length).toBeGreaterThan(0);
+  });
+});
