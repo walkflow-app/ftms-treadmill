@@ -118,6 +118,8 @@ export class SpeedGovernor {
   /** The limit was lowered while the belt may run above it, not confirmed yet */
   private limitPending = false;
   private over: { first: number; last: number } | null = null;
+  /** The limit, to be sent in one command: the belt was shown to run above it (a command down, never a step up) */
+  private lowering: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private sending = false;
   private gen = 0;
@@ -148,28 +150,37 @@ export class SpeedGovernor {
       this.anchor = null; // not a speed a belt has: it does not even tell whether the belt moves
       return;
     }
+    // A newer reading that is somewhere else than what was confirmed: the belt has moved on, the confirmation is stale
+    if (this.confirmed && Math.abs(kmh - this.confirmed.kmh) > this.maxStep + EPS) this.confirmed = null;
     let confirmedNow = false;
     if (this.anchor && Math.abs(kmh - this.anchor.kmh) <= this.maxStep + EPS && at - this.anchor.at <= this.opts.freshMs) {
-      if (at - this.anchor.at >= CONFIRM_MS) { this.confirmed = { kmh, at }; confirmedNow = true; }
+      // The lower of the two agreeing readings: one outlier up to maxStep above the other must not become the base
+      if (at - this.anchor.at >= CONFIRM_MS) { this.confirmed = { kmh: Math.min(kmh, this.anchor.kmh), at }; confirmedNow = true; }
     } else {
       this.anchor = { kmh, at };
     }
-    // A limit lowered below a belt that runs faster: two readings above it, 1 s apart, show that, however they jitter
+    // A limit lowered below a belt that runs faster: two readings above it, 1 s apart, show that, however they jitter.
+    // These readings only serve the lowered limit (a command down); they are never `confirmed`, the base of a step up.
+    let overConfirmed = false;
     if (this.limitPending) {
       if (kmh <= this.range.max + EPS) this.over = null;
       else if (!this.over || at - this.over.last > this.opts.freshMs) this.over = { first: at, last: at };
       else {
         this.over.last = at;
-        if (at - this.over.first >= CONFIRM_MS) { this.confirmed = { kmh, at }; confirmedNow = true; }
+        if (at - this.over.first >= CONFIRM_MS) overConfirmed = true;
       }
     }
     const was = this.moving;
     this.moving = kmh >= MOVING_KMH;
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
-    if (confirmedNow && this.limitPending) {
+    if ((confirmedNow || overConfirmed) && this.limitPending) {
       if (kmh <= this.range.max + EPS) this.limitPending = false;
-      else if (this.base() > this.range.max + EPS) { this.limitPending = false; this.request(this.range.max); }
+      else if (overConfirmed || this.base() > this.range.max + EPS) {
+        this.limitPending = false;
+        this.lowering = clampSpeed(this.range.max, this.range);
+        this.request(this.range.max);
+      }
     }
   }
 
@@ -207,11 +218,16 @@ export class SpeedGovernor {
     // If the belt runs above a limit that was just lowered, actively regulate down to the limit
     this.limitPending = false;
     this.over = null;
+    this.lowering = null;
+    const m = this.measured;
+    const above = m !== null && this.deps.now() - m.at < this.opts.freshMs && m.kmh > range.max + EPS && m.kmh <= LIMIT_MAX;
     if ((this.last || this.measured) && this.base() > range.max + EPS) this.request(range.max);
+    // The belt may run above the new limit, not confirmed yet: the limit is sent at once if that is no step up of more than
+    // maxStep from the last command (it can only slow the belt down); a bigger step up waits for two readings (limitPending)
+    else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(range.max);
     else {
-      const m = this.measured;
-      this.limitPending = m !== null && this.deps.now() - m.at < this.opts.freshMs && m.kmh > range.max + EPS && m.kmh <= LIMIT_MAX;
-      if (this.limitPending && m) this.over = { first: m.at, last: m.at };
+      this.limitPending = above;
+      if (above && m) this.over = { first: m.at, last: m.at };
       this.pump();
     }
   }
@@ -223,6 +239,7 @@ export class SpeedGovernor {
       return null;
     }
     this._target = clamped;
+    if (this.lowering !== clamped) this.lowering = null;
     if (this.moving === false && this.loggedHeld !== clamped) {
       this.loggedHeld = clamped;
       this.deps.notice?.({ code: 'speed-held-until-moving', kmh: clamped });
@@ -255,6 +272,7 @@ export class SpeedGovernor {
   /** End the ramp immediately (stop, pause, disconnect). */
   cancel() {
     this.gen++;
+    this.lowering = null;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this._target = null;
@@ -292,7 +310,8 @@ export class SpeedGovernor {
       return;
     }
     const target = this._target;
-    let plan = planRamp(this.base(), target, this.maxStep, this.range);
+    let plan = this.lowering === target && this.last?.kmh !== target ? [target] : planRamp(this.base(), target, this.maxStep, this.range);
+    this.lowering = null;
     if (!plan.length) {
       if (this.last?.kmh === target) { this.deps.onChange?.(); return; }
       plan = [target]; // base is already the target; the device still gets it explicitly

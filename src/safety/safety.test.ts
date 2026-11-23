@@ -328,20 +328,78 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([4.5, 5]);
   });
 
-  it('a limit lowered before the first reading of a faster belt is confirmed is applied once it is', async () => {
+  it('a limit lowered below an unconfirmed faster belt is sent in the very next command (promise 2: at once)', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
     gov.noteMeasured(4);
     gov.request(4.5);
     await vi.advanceTimersByTimeAsync(10_000);
-    gov.noteMeasured(8); // the remote
+    gov.noteMeasured(8); // the remote, one reading only
     await vi.advanceTimersByTimeAsync(300);
     gov.setRange({ min: 1, max: 5 });
-    await vi.advanceTimersByTimeAsync(900);
-    expect(sent.map(s => s[1])).toEqual([4.5]);
-    gov.noteMeasured(8);
-    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(0);
     expect(sent.map(s => s[1])).toEqual([4.5, 5]);
+  });
+
+  it('a stale confirmation is not the base: the belt was raised and lowered again on the console', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(3);
+    await vi.advanceTimersByTimeAsync(7000);
+    await readTwice(gov, 7.5); // confirmed at 7.5
+    await vi.advanceTimersByTimeAsync(300);
+    for (const k of [6.5, 5.5, 4.5, 4]) { gov.noteMeasured(k); await vi.advanceTimersByTimeAsync(500); }
+    gov.request(5);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[0]![1]).toBeLessThanOrEqual(4 + 0.5 + 1e-9);
+    expect(Math.max(...sent.map(s => s[1]))).toBeLessThanOrEqual(5);
+  });
+
+  it('an implausible reading (655.35) does not drop a confirmation: it says nothing about the belt', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(3);
+    await vi.advanceTimersByTimeAsync(7000);
+    await readTwice(gov, 7.5);
+    gov.noteMeasured(655.35); // not a speed: says nothing
+    gov.request(8);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map(s => s[1])).toEqual([8]); // base 7.5 still confirmed: 7.5 → 8
+  });
+
+  it('two agreeing readings with one outlier: the base is the lower one, not up to maxStep above the belt', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(2);
+    await vi.advanceTimersByTimeAsync(7000);
+    gov.noteMeasured(5.0);
+    await vi.advanceTimersByTimeAsync(1200);
+    gov.noteMeasured(5.5); // an outlier, 0.5 above the belt
+    gov.request(8);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map(s => s[1])).toEqual([5.5]); // from 5.0 plus one step, not from 5.5 (6.0)
+  });
+
+  it('readings above a lowered limit that jitter by more than maxStep lower the limit but are not a confirmed speed (no base for a step up)', async () => {
+    const { gov, sent } = make();
+    gov.maxStep = 0.1;
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(4);
+    gov.request(4.1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(7.8);
+    gov.setRange({ min: 1, max: 5 });
+    await vi.advanceTimersByTimeAsync(1000);
+    gov.noteMeasured(8.2); // lowered limit confirmed: 5 is sent
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map(s => s[1])).toEqual([4.1, 5]);
+    gov.setRange({ min: 1, max: 10 }); // limit up again, belt readings forgotten as a base
+    await vi.advanceTimersByTimeAsync(5000);
+    gov.noteMeasured(5);
+    gov.request(9);
+    await vi.advanceTimersByTimeAsync(1600);
+    expect(sent.map(s => s[1])[2]).toBeLessThanOrEqual(5.1 + 1e-9);
   });
 
   it('a limit lowered below a belt that jitters by more than maxStep (maxStep 0.1) is applied after two readings 1 s apart', async () => {
@@ -359,7 +417,7 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([4.1, 5]);
   });
 
-  it('a limit lowered while the treadmill still speeds up is applied after two readings 1 s apart', async () => {
+  it('a limit lowered while the treadmill still speeds up is applied at once (no step up beyond maxStep)', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
     gov.noteMeasured(4);
@@ -386,7 +444,7 @@ describe('SpeedGovernor', () => {
     await vi.advanceTimersByTimeAsync(1200);
     gov.noteMeasured(4.5);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(sent.map(s => s[1])).toEqual([4.5]);
+    expect(sent.map(s => s[1])).toEqual([4.5, 5]); // sent at once on the first reading; the later ones change nothing
   });
 
   it('two agreeing readings far apart in time (the treadmill was silent) confirm nothing', async () => {
