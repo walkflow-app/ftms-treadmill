@@ -245,7 +245,8 @@ if (info.inclRange) await tm.setIncline(2.5);
 `setLimits(limits: { speedLimit?: number; limitConfirmed?: boolean; maxStep?: number }): void`
 
 Changes the limit or the step while running. Lowering the limit takes effect at once: a target above it comes down
-(`limit-lowered`), and a belt above it is set to the new limit in one command, not in steps. A limit above 6 km/h needs
+(`limit-lowered`). The new limit is sent in one command, not in steps, when it is at or below the last command, or when two
+readings at least 1 s apart show the belt above it; otherwise the speed comes down in steps of at most `maxStep`. A limit above 6 km/h needs
 `limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. A limit that is not
 a finite number is ignored, and the one in force stays.
 

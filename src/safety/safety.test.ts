@@ -526,17 +526,21 @@ describe('SpeedGovernor', () => {
   it('a lowered limit pending on one reading is dropped if the next one is not above it', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
-    gov.noteMeasured(4);
-    gov.request(4.5);
+    gov.noteMeasured(2);
+    gov.request(2.5);
     await vi.advanceTimersByTimeAsync(10_000);
     gov.noteMeasured(8);
-    gov.setRange({ min: 1, max: 5 });
+    gov.setRange({ min: 1, max: 5 }); // 2.5 is more than maxStep below 5: limitPending is set by the one reading
     await vi.advanceTimersByTimeAsync(1200);
-    gov.noteMeasured(4.5);
-    await vi.advanceTimersByTimeAsync(1200);
-    gov.noteMeasured(4.5);
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(sent.map(s => s[1])).toEqual([4.5, 5]); // sent at once on the first reading; the later ones change nothing
+    gov.noteMeasured(8); // first reading above the limit after setRange: the window starts
+    await vi.advanceTimersByTimeAsync(100);
+    gov.noteMeasured(4); // not above the limit: the window is dropped
+    await vi.advanceTimersByTimeAsync(300);
+    gov.noteMeasured(8); // a new window starts
+    await vi.advanceTimersByTimeAsync(700);
+    gov.noteMeasured(8); // only 0.7 s after the new start; without the drop the old start (1.1 s ago) would confirm and send 5
+    await vi.advanceTimersByTimeAsync(300);
+    expect(sent.map(s => s[1])).toEqual([2.5]);
   });
 
   it('a lowered limit waiting for the interval is no longer sent in one command once the belt runs at or below it', async () => {
