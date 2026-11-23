@@ -151,7 +151,7 @@ export class SpeedGovernor {
    * - confirmed: the lower of two readings that agree, at least CONFIRM_MS apart: the only base above the last command.
    *   Cleared by a plausible reading more than maxStep away from it, and reset().
    * - limitPending: the limit was lowered below a belt that may run above it, not confirmed. Set by setRange; cleared by
-   *   setRange, noteExternalCommand, reset(), and when the lowered limit is sent or a reading is not above the limit.
+   *   setRange, noteExternalCommand (only a console speed below the limit that differs from the last command), reset(), and when the lowered limit is sent or a reading is not above the limit.
    * - over: the readings above a pending limit (first, last, value), two that agree within maxStep confirm it. Cleared with
    *   limitPending, and by a reading not above the limit.
    * - lowering: the limit to be sent in one command, once the belt is shown above it. Cleared by a reading at or below it,
@@ -208,9 +208,13 @@ export class SpeedGovernor {
   /** Speed command sent from outside (console): ends the ramp and counts for the minimum interval. */
   noteExternalCommand(kmh: number) {
     this.cancel();
-    // The console already set a speed: a pending lowered limit must not override it later with a step up
-    this.limitPending = false;
-    this.over = null;
+    // A console Set Speed that changes the speed to one below the lowered limit already brings the belt under it: a pending
+    // lowered limit must not override it later with a step up. A command that repeats the last speed (or is not below the
+    // limit) changes nothing about the belt, so the pending limit stays.
+    if (this.limitPending && kmh < this.range.max - EPS && (!this.last || Math.abs(kmh - this.last.kmh) > EPS)) {
+      this.limitPending = false;
+      this.over = null;
+    }
     this.last = { kmh, at: this.deps.now() };
   }
 
