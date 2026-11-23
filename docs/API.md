@@ -148,13 +148,16 @@ failed or a Stop or Pause came in while it was on its way (then nothing more of 
 
 Start is **not sent** when the lowest speed was not set: the write failed, the limit is below the treadmill's lowest speed
 (`no-allowed-speed`), or the treadmill refused it. It waits up to one second for the treadmill's answer to that speed; a
-treadmill that does not answer is let through, one that refuses it is not. `start()` then returns `false` and sends
-`start-speed-failed`.
+treadmill that does not answer is let through, one that refuses it is not; only the answer to that very write counts (an
+answer that came before it, or one to a raw Set Speed, does not). `start()` then returns `false` and sends
+`start-speed-failed`. After a failed start the ramp is reset (`state.target` is `null` until the next `start()`), but the speed asked for last is
+kept: the next `start()` ramps up to it again.
 
 On a belt measured moving (`MOVING_KMH` or more) `start()` sends nothing, leaves a ramp alone, returns `false` and sends
 `start-belt-moving`: setting the lowest speed there would slow the belt down in one step. A reading counts when it is at most 5 s
 old, or older while the belt counts as started (`start()` or Machine Status 'started', and no stop since), so an app that
 calls `start()` after an `await` cannot do it; a treadmill that stops reporting once the belt stands does not lock Start.
+`state.controls.start` follows the same rule, so it is `false` exactly when `start()` would send nothing for this reason.
 
 Check `tm.state.controls.start` before offering Start: it is `false` while the belt may still be moving, a start is under
 way or a program runs.

@@ -187,6 +187,8 @@ export interface Treadmill {
 
 /** How long Start waits for the treadmill's answer to the start speed; one that gives none is let through */
 const SPEED_ANSWER_MS = 1000;
+/** Control Point result code "Success" */
+const RESULT_OK = 1;
 
 /** Before the treadmill says otherwise */
 const DEFAULT_DEVICE_RANGE = { min: 1.0, max: 12.0 };
@@ -237,7 +239,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
 
   const governor = new SpeedGovernor({
     // A ramp step ended while it waited in the queue is not written (a stop reported by the treadmill, #28 F)
-    send: (kmh, current) => session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}),
+    send: (kmh, current) => { noteGovernorSpeedWrite(); return session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}); },
     now,
     notice,
     onChange: () => {
@@ -262,20 +264,49 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     emit('stopFailed', failed);
   }
 
-  /** Who waits for the treadmill's answer to a Set Speed (the start speed before Start) */
-  const speedAnswers = new Set<(result: number) => void>();
+  /**
+   * The Set Speed commands written and not yet answered, oldest first. The treadmill answers in the order it got them, so the
+   * first answer belongs to the first entry: one is handed to the start speed only if it is the answer to that write. An answer
+   * with no entry (a late one to an earlier start, one before the write) and the answer to a raw Set Speed are not. An entry that
+   * waited longer than SPEED_ANSWER_MS is given up (a treadmill that never answers must not shift the answers that follow).
+   */
+  const pendingSpeedWrites: { at: number; owner: SpeedAnswerListener | null }[] = [];
+  interface SpeedAnswerListener { armed: boolean; answered(result: number): void }
+  /** Who waits for the treadmill's answer to the start speed, and has not seen its write yet */
+  const speedListeners = new Set<SpeedAnswerListener>();
+  function notePendingSpeedWrite(owner: SpeedAnswerListener | null) {
+    const t = now();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_ANSWER_MS) pendingSpeedWrites.shift();
+    pendingSpeedWrites.push({ at: t, owner });
+  }
+  /** The governor writes the start speed (and ramp steps) here: the first write after a listener was set up is the one it waits for */
+  function noteGovernorSpeedWrite() {
+    const owner = [...speedListeners].find(l => !l.armed) ?? null;
+    if (owner) owner.armed = true;
+    notePendingSpeedWrite(owner);
+  }
+  function speedAnswerReceived(result: number) {
+    const t = now();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_ANSWER_MS) pendingSpeedWrites.shift();
+    const entry = pendingSpeedWrites.shift();
+    // A refusal is never matched: whoever waits for the start speed and has written it takes any refusal as its own (fails
+    // closed: a ghost entry of a write that never went out, or a late order, cannot let a refused start speed through). Only a
+    // success has to be the answer to that very write.
+    if (result === RESULT_OK) entry?.owner?.answered(result);
+    else for (const l of speedListeners) if (l.armed) l.answered(result);
+  }
   function expectSpeedAnswer() {
     let answered!: (result: number | null) => void;
     const got = new Promise<number | null>(resolve => { answered = resolve; });
-    const listener = (result: number) => answered(result);
-    speedAnswers.add(listener);
+    const listener: SpeedAnswerListener = { armed: false, answered: result => { answered(result); } };
+    speedListeners.add(listener);
     return {
       wait: async () => {
         const result = await Promise.race([got, clock.wait(SPEED_ANSWER_MS).then(() => null)]);
-        speedAnswers.delete(listener);
+        speedListeners.delete(listener);
         return result;
       },
-      drop: () => { speedAnswers.delete(listener); },
+      drop: () => { speedListeners.delete(listener); },
     };
   }
 
@@ -302,7 +333,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     },
     controlResponse: r => {
       emit('controlResponse', r);
-      if (r.requestOp === OP.SET_SPEED) for (const answer of speedAnswers) answer(r.result);
+      if (r.requestOp === OP.SET_SPEED) speedAnswerReceived(r.result);
     },
   });
 
@@ -423,6 +454,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       return { action: 'sent', ok };
     }
     if (check.setSpeed !== undefined) governor.noteExternalCommand(check.setSpeed);
+    if (bytes[0] === OP.SET_SPEED) notePendingSpeedWrite(null);
     return { action: 'sent', ok: await c.send(data) };
   }
 

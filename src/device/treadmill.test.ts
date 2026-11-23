@@ -223,6 +223,63 @@ describe('start (promise 3) and stop (promise 4)', () => {
     expect(dev.writes).toEqual(['00', '02 64 00', '07']);
   });
 
+  it('an answer that arrives before the start speed was written is not its answer: a stray 80 02 01, then the refusal: no Start', async () => {
+    const { tm, dev } = await rig();
+    dev.writeImpl = async d => {
+      if (d[0] === 0x00) dev.answer(0x02, 1); // a late success of an earlier Set Speed, while Control is asked for
+      if (d[0] === 0x02) queueMicrotask(() => dev.answer(0x02, 3));
+    };
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual(['00', '02 64 00']);
+  });
+
+  it('the answer to a raw Set Speed that was written before the start speed is not the answer to it: success for the console, refusal for the start: no Start', async () => {
+    const { tm, dev } = await rig();
+    let raw: Promise<unknown> | undefined;
+    dev.writeImpl = async d => {
+      if (d[0] === 0x00) raw = tm.sendRaw([0x02, 0x6e, 0x00]); // goes out between Request Control and the start speed
+      // the console's success comes late, together with the refusal of the start speed that was written after it
+      if (d[0] === 0x02 && d[1] === 0x64) queueMicrotask(() => { dev.answer(0x02, 1); dev.answer(0x02, 3); });
+    };
+    expect(await tm.start()).toBe(false);
+    expect(await raw).toEqual({ action: 'sent', ok: true });
+    expect(dev.writes).toEqual(['00', '02 6e 00', '02 64 00']);
+  });
+
+  it('a raw Set Speed whose write failed leaves nothing behind: the refusal of the start speed still blocks Start', async () => {
+    const { tm, dev } = await rig();
+    dev.writeImpl = async d => {
+      if (d[0] === 0x02 && d[1] === 0x6e) throw new Error('GATT busy');
+      if (d[0] === 0x02 && d[1] === 0x64) queueMicrotask(() => dev.answer(0x02, 3));
+    };
+    await tm.sendRaw([0x02, 0x6e, 0x00]);
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).not.toContain('07');
+  });
+
+  it('after a failed start the speed asked for is kept: the next start ramps up to it again', async () => {
+    const { tm, dev } = await rig();
+    dev.speed(0);
+    tm.setSpeed(3);
+    dev.writeImpl = async d => { if (d[0] === 0x02) queueMicrotask(() => dev.answer(0x02, 3)); };
+    expect(await tm.start()).toBe(false);
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    expect(await tm.start()).toBe(true);
+    expect(tm.state.target).toBe(3);
+  });
+
+  it('a treadmill that gives no answer to Set Speed delays Start by up to SPEED_ANSWER_MS (1 s), then Start goes out', async () => {
+    const waits: number[] = [];
+    const dev = new FakeTreadmill();
+    const tm = createTreadmill({ clock: { now: () => 0, wait: async ms => { waits.push(ms); } } });
+    await tm.connect({ kind: 'fake', availability: async () => ({ ok: true }), requestDevice: async () => dev });
+    dev.writes = [];
+    expect(await tm.start()).toBe(true);
+    expect(waits).toContain(1000);
+    expect(dev.writes).toEqual(['00', '02 64 00', '07']);
+  });
+
   it('a limit below the lowest speed of the treadmill: no Start', async () => {
     const dev = new FakeTreadmill();
     dev.readable.set('1826/2ad4', [200, 0, 0x20, 0x03, 10, 0]); // lowest speed 2 km/h

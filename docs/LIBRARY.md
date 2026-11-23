@@ -131,7 +131,8 @@ one of them is a `safety` commit and at least a minor version.
    is sent in one command (the limit applies at once).
 3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. If that speed
    could not be set (the write failed, the limit leaves no allowed speed, or the treadmill refused it), no Start is sent:
-   `start()` returns `false` with `start-speed-failed`. A treadmill that does not answer within a second is let through.
+   `start()` returns `false` with `start-speed-failed`. A treadmill that does not answer within a second (`SPEED_ANSWER_MS`) is let through, so one that gives no
+   answer to Set Speed delays Start by up to 1 s. Only the answer to that write counts, not an earlier or a raw one.
    `start()` on a belt measured moving (a reading up to 5 s old, or an older one while the belt counts as started) sends nothing (`start-belt-moving`), so the belt is never dropped to the lowest
    speed in one step. After Start the speed asked for last on this connection (chosen while standing, or the one before a
    stop or pause) is ramped up to from there, once the belt moves.

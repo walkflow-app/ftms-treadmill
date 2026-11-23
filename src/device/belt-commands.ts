@@ -4,10 +4,9 @@
 // they end a start that is still being sent, and they are sent again if the treadmill did not take them.
 
 import { cmdPause, cmdRequestControl, cmdStart, cmdStop } from '../protocol/ftms.ts';
-import { MOVING_KMH } from '../safety/belt-phase.ts';
 import type { Notice } from '../protocol/notice.ts';
 import type { BeltPhaseTracker } from '../safety/belt-phase.ts';
-import { READING_FRESH_MS, type SpeedGovernor, type StandstillDetector } from '../safety/safety.ts';
+import { beltMeasuredMoving, type SpeedGovernor, type StandstillDetector } from '../safety/safety.ts';
 import type { BeltState } from './belt-state.ts';
 
 /** How often a Stop or Pause is sent before the app says that it could not stop the belt */
@@ -102,8 +101,8 @@ export function setupBelt(host: BeltHost) {
     if (!c) return false;
     // Nothing is touched: the belt runs on, and so does a ramp that may be going. An old reading counts only while the belt is
     // known to have been started and not stopped since: a treadmill that stops reporting at a standstill must not lock Start
-    const moving = (session.lastMeasured ?? 0) >= MOVING_KMH;
-    if (moving && (session.beltStarted || host.now() - session.lastMeasuredAt <= READING_FRESH_MS)) {
+    // (the same rule as controls.start, so the app never offers a Start that does nothing)
+    if (beltMeasuredMoving({ measuredKmh: session.lastMeasured, measuredAgeMs: host.now() - session.lastMeasuredAt, startedByApp: session.beltStarted })) {
       host.notice({ code: 'start-belt-moving' });
       return false;
     }

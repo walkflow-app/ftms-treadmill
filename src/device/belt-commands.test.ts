@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TreadmillClient } from './ble.ts';
 import type { SpeedGovernor, StandstillDetector } from '../safety/safety.ts';
 import { hex } from '../protocol/ftms.ts';
+import { controlAvailability } from '../safety/safety.ts';
 import { setupBelt, STOP_ATTEMPTS, type BeltHost } from './belt-commands.ts';
 import { BeltState } from './belt-state.ts';
 
@@ -214,6 +215,18 @@ describe('start', () => {
     r.session.beltStarted = true;
     expect(await r.belt.start()).toBe(false);
     expect(r.sends()).toEqual([]);
+  });
+
+  it('uses the rule of controls.start: it says no exactly when start() sends nothing', async () => {
+    for (const startedByApp of [false, true]) {
+      for (const ageMs of [0, 5000, 5001, 60_000]) {
+        const r = rig({ measured: 5 });
+        r.session.beltStarted = startedByApp;
+        r.session.lastMeasuredAt = 1234 - ageMs;
+        const offered = controlAvailability({ connected: true, measuredKmh: 5, measuredAgeMs: ageMs, startedByApp, startingNow: false, programActive: false }).start;
+        expect(await r.belt.start(), JSON.stringify({ startedByApp, ageMs })).toBe(offered);
+      }
+    }
   });
 
   it('on a belt measured standing, it starts', async () => {
