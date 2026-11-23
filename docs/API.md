@@ -224,8 +224,10 @@ How it gets there: in steps of at most `maxStep`, one command at most every `RAM
 belt moves. Before Start, or while the belt still stands, the speed is held (`speed-held-until-moving`) and ramped to
 once it moves. After a stop of any kind (`stop()`, `pause()`, a raw Stop, the treadmill's own stop or safety key, a standstill
 end) the belt coasts down while it still reports speeds above 0: nothing is sent then either. The speed asked for is
-held until the belt was seen standing (below 0.1 km/h) or a new run begins (`start()`, a raw Start, a Machine Status
-`started`), and a moving belt after that.
+held until the belt was seen standing (readings below 0.1 km/h at least 1 s apart, none above in between, so one
+spurious 0.0 does not count) or a new run begins (`start()`, a raw Start, a Machine Status `started`), and a moving belt
+after that. A treadmill that reports no standing belt and no `started` keeps the speed held until the next `start()`, stop
+or connection: nothing is sent then, and `speed-held-until-moving` says so.
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).

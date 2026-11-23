@@ -137,17 +137,62 @@ describe('SpeedGovernor', () => {
       expect(gov.holding).toBe(true);
     });
 
-    it('a belt seen standing is a new run once it moves again', async () => {
+    it('a belt seen standing (two readings below 0.1, 1 s apart) is a new run once it moves again', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(2);
       gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(1000);
+      gov.noteMeasured(0);
       await vi.advanceTimersByTimeAsync(0);
       expect(sent).toEqual([]);
       gov.noteMeasured(1);
       await vi.advanceTimersByTimeAsync(0);
-      expect(sent).toEqual([[0, 1.5]]);
+      expect(sent).toEqual([[1000, 1.5]]);
+    });
+
+    it('one spurious 0.0 in the middle of the coast-down does not end the wait (#49)', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [3, 0, 2.5, 2, 1.5, 1]) {
+        gov.noteMeasured(kmh);
+        await vi.advanceTimersByTimeAsync(2000);
+      }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+    });
+
+    it('two readings below 0.1 less than 1 s apart do not end the wait', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(2);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(500);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(0);
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sent).toEqual([]);
+    });
+
+    it('a reading of a moving belt between two readings below 0.1 starts the confirmation again', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(600);
+      gov.noteMeasured(2.5);
+      await vi.advanceTimersByTimeAsync(600);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(0);
+      gov.noteMeasured(2);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sent).toEqual([]);
     });
 
     it('newRun ends the wait without the belt standing', async () => {

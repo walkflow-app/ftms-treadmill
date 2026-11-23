@@ -128,6 +128,8 @@ export class SpeedGovernor {
   private moving: boolean | null = null;
   /** A stop was sent or reported and the belt was not seen standing since: nothing is sent, however fast it still reports */
   private coasting = false;
+  /** While coasting: when the readings below STANDING_KMH began (none above it since); null: the last reading was above */
+  private standingSince: number | null = null;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -193,8 +195,14 @@ export class SpeedGovernor {
       }
     }
     // After a stop the belt decelerates through readings above MOVING_KMH: that is no new run. Only a belt that was seen
-    // standing ends the wait; from then on a belt that moves is a new run (a Start, or a belt started on the treadmill)
-    if (this.coasting && kmh < STANDING_KMH) this.coasting = false;
+    // standing ends the wait; from then on a belt that moves is a new run (a Start, or a belt started on the treadmill).
+    // Standing is confirmed like a speed: readings below STANDING_KMH at least CONFIRM_MS apart with none above in between,
+    // so one spurious 0.0 during the coast-down (#49) does not end the wait
+    if (this.coasting) {
+      if (kmh >= STANDING_KMH) this.standingSince = null;
+      else if (this.standingSince === null) this.standingSince = at;
+      else if (at - this.standingSince >= CONFIRM_MS) { this.coasting = false; this.standingSince = null; }
+    }
     const was = this.moving;
     this.moving = !this.coasting && kmh >= MOVING_KMH;
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
@@ -357,15 +365,17 @@ export class SpeedGovernor {
   /** A new run begins (Start, a Machine Status "started"): the belt is no longer waited for to stand. */
   newRun() {
     this.coasting = false;
+    this.standingSince = null;
   }
 
   /**
    * Additionally forget the last command and measured value (after stop, start, disconnect).
-   * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (a reading below STANDING_KMH)
-   * or a new run begins (reset without afterStop, newRun).
+   * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (readings below STANDING_KMH
+   * at least CONFIRM_MS apart, none above in between) or a new run begins (reset without afterStop, newRun).
    */
   reset(afterStop = false) {
     this.coasting = afterStop;
+    this.standingSince = null;
     this.cancel();
     this.last = null;
     this.measured = null;
