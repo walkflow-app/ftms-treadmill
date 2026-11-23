@@ -13,7 +13,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 
 export interface ReportsHost {
   session: BeltState;
-  phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
+  phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed' | 'phase'>;
   governor: Pick<SpeedGovernor, 'reset' | 'newRun' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
@@ -73,7 +73,9 @@ export function setupReports(host: ReportsHost) {
       standstill.disarm();
     } else if (e.kind === 'started') {
       session.beltStarted = true;
-      governor.newRun();
+      // A late or mistaken "started" while a stop is under way (the belt still coasts down) is no new run: the wait for a
+      // standing belt goes on, so a held speed is not ramped onto a decelerating belt (#25)
+      if (phase.phase(host.now()) !== 'stopping') governor.newRun();
     } else if (e.kind === 'control-lost') {
       session.controlLost = true;
     }
