@@ -61,6 +61,7 @@ describe('Machine Status', () => {
     const r = rig();
     r.reports.machineStatus(dv(0x04));
     expect(r.session.beltStarted).toBe(true);
+    expect(r.governor.newRun).toHaveBeenCalledOnce();
   });
 
   it('control lost: remembered, so the next stop asks for control first', () => {

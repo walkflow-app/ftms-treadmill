@@ -816,8 +816,8 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     const { tm, dev } = await coasting('stop');
     dev.speed(3.5);
     tm.setSpeed(5);
-    dev.speed(0);
-    dev.machineStatus(0x04);
+    dev.machineStatus(0x04); // no reading of a standing belt in between: this alone ends the wait
+    clock += 2000;
     dev.speed(1);
     clock += 2000;
     dev.speed(1);
