@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain script without types, also run by node in CI
-import { checkFix, classify, decide, failedFixRuns, holdLabel, LIMITS, marker, parseVerdict, quiet, reviewEvent, reviewModels, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
+import { checkFix, classify, decide, failedFixRuns, holdLabel, LIMITS, marker, parseVerdict, quiet, resolveMember, reviewEvent, reviewModels, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
 // @ts-expect-error plain script without types, also run by node in CI
 import { confirms, owners, releaseGate } from '../scripts/release-gate.mjs';
 
@@ -88,6 +88,27 @@ describe('agent pipeline: the verdict', () => {
   it('never calls claude.yml from its own texts, and the text of an agent carries no marker', () => {
     expect(quiet('comment @claude review or @Claude fix')).not.toMatch(/@claude/i);
     expect(quiet(marker('agent-review', { verdict: 'OK' }))).not.toContain('<!--');
+  });
+});
+
+describe('agent pipeline: who is a member', () => {
+  const yes = () => true;
+  const no = () => false;
+  const broken = () => { throw new Error('API down'); };
+  it('keeps an association that already says member, without asking', () => {
+    for (const a of ['OWNER', 'MEMBER', 'COLLABORATOR']) expect(resolveMember('x', a, broken)).toBe(a);
+  });
+  it('asks the organisation when the association says outside (a private membership shows as CONTRIBUTOR)', () => {
+    expect(resolveMember('maintainer', 'CONTRIBUTOR', yes)).toBe('MEMBER');
+    expect(resolveMember('maintainer', 'NONE', yes)).toBe('MEMBER');
+  });
+  it('stays outside when the organisation says no', () => {
+    expect(resolveMember('stranger', 'CONTRIBUTOR', no)).toBe('CONTRIBUTOR');
+    expect(resolveMember('stranger', 'FIRST_TIME_CONTRIBUTOR', no)).toBe('FIRST_TIME_CONTRIBUTOR');
+  });
+  it('does not ask for a login that is not known (a deleted account)', () => {
+    expect(resolveMember(undefined, 'NONE', broken)).toBe('NONE');
+    expect(resolveMember(null, 'NONE', broken)).toBe('NONE');
   });
 });
 
