@@ -158,6 +158,9 @@ On a belt measured moving (`MOVING_KMH` or more) `start()` sends nothing, leaves
 old, or older while the belt counts as started (`start()` or Machine Status 'started', and no stop since), so an app that
 calls `start()` after an `await` cannot do it; a treadmill that stops reporting once the belt stands does not lock Start.
 `state.controls.start` follows the same rule, so it is `false` exactly when `start()` would send nothing for this reason.
+The effect: a treadmill that stops reporting and was stopped at its console without a "stopped" status (the last reading still
+moving, the belt still counting as started) keeps `controls.start` `false` until `stop()` is called. Stop is always available
+and clears the started state, so the person is never locked out.
 
 Check `tm.state.controls.start` before offering Start: it is `false` while the belt may still be moving, a start is under
 way or a program runs.

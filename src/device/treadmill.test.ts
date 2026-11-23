@@ -257,6 +257,18 @@ describe('start (promise 3) and stop (promise 4)', () => {
     expect(dev.writes).not.toContain('07');
   });
 
+  it('an earlier Set Speed that was answered more than 1 s late: its success is not the answer to the start speed, whose refusal follows: no Start', async () => {
+    const { tm, dev } = await rig();
+    expect(await tm.sendRaw([0x02, 0x6e, 0x00])).toEqual({ action: 'sent', ok: true }); // no answer in time
+    clock = 1200;
+    dev.writeImpl = async d => {
+      // the late success of the console's Set Speed, then the refusal of the start speed
+      if (d[0] === 0x02 && d[1] === 0x64) queueMicrotask(() => { dev.answer(0x02, 1); dev.answer(0x02, 3); });
+    };
+    expect(await tm.start()).toBe(false);
+    expect(dev.writes).toEqual(['02 6e 00', '00', '02 64 00']);
+  });
+
   it('after a failed start the speed asked for is kept: the next start ramps up to it again', async () => {
     const { tm, dev } = await rig();
     dev.speed(0);

@@ -187,6 +187,8 @@ export interface Treadmill {
 
 /** How long Start waits for the treadmill's answer to the start speed; one that gives none is let through */
 const SPEED_ANSWER_MS = 1000;
+/** How long a write that got no answer is remembered: a slow answer to it is still its own, not the next write's */
+const SPEED_WRITE_MEMORY_MS = 10_000;
 /** Control Point result code "Success" */
 const RESULT_OK = 1;
 
@@ -268,7 +270,9 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
    * The Set Speed commands written and not yet answered, oldest first. The treadmill answers in the order it got them, so the
    * first answer belongs to the first entry: one is handed to the start speed only if it is the answer to that write. An answer
    * with no entry (a late one to an earlier start, one before the write) and the answer to a raw Set Speed are not. An entry that
-   * waited longer than SPEED_ANSWER_MS is given up (a treadmill that never answers must not shift the answers that follow).
+   * waited longer than SPEED_ANSWER_MS stays as a tombstone (nobody waits for it any more, but a late answer is consumed by it and
+   * not handed to a later write) and is forgotten after SPEED_WRITE_MEMORY_MS (a treadmill that never answers must not shift the
+   * answers that follow for ever).
    */
   const pendingSpeedWrites: { at: number; owner: SpeedAnswerListener | null }[] = [];
   interface SpeedAnswerListener { armed: boolean; answered(result: number): void }
@@ -276,7 +280,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   const speedListeners = new Set<SpeedAnswerListener>();
   function notePendingSpeedWrite(owner: SpeedAnswerListener | null) {
     const t = now();
-    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_ANSWER_MS) pendingSpeedWrites.shift();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_WRITE_MEMORY_MS) pendingSpeedWrites.shift();
     pendingSpeedWrites.push({ at: t, owner });
   }
   /** The governor writes the start speed (and ramp steps) here: the first write after a listener was set up is the one it waits for */
@@ -287,7 +291,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
   }
   function speedAnswerReceived(result: number) {
     const t = now();
-    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_ANSWER_MS) pendingSpeedWrites.shift();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_WRITE_MEMORY_MS) pendingSpeedWrites.shift();
     const entry = pendingSpeedWrites.shift();
     // A refusal is never matched: whoever waits for the start speed and has written it takes any refusal as its own (fails
     // closed: a ghost entry of a write that never went out, or a late order, cannot let a refused start speed through). Only a
@@ -302,6 +306,8 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     speedListeners.add(listener);
     return {
       wait: async () => {
+        // No Set Speed was written (nothing to answer): no wait for nothing
+        if (!listener.armed) { speedListeners.delete(listener); return null; }
         const result = await Promise.race([got, clock.wait(SPEED_ANSWER_MS).then(() => null)]);
         speedListeners.delete(listener);
         return result;
