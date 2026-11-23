@@ -228,7 +228,9 @@ export class SpeedGovernor {
     const l = this.last;
     const now = this.deps.now();
     const m = this.measured;
-    // A belt slower than the last command lowers the base at once, one reading is enough: it can only lower a step up
+    // A belt slower than the last command lowers the base at once, one reading is enough.
+    // Known: it can also be a spurious low reading (0.0), and that becomes the base too, so a belt at 8 with target 8.5
+    // gets range.min in one command (as on main). Open: ftms-treadmill issue #49 (point A).
     if (l && m && now - l.at >= this.opts.settleMs && now - m.at < this.opts.freshMs
       && Number.isFinite(m.kmh) && m.kmh >= 0 && m.kmh <= LIMIT_MAX && m.kmh < b) return m.kmh;
     return b;
@@ -271,7 +273,8 @@ export class SpeedGovernor {
     const above = m !== null && this.deps.now() - m.at < this.opts.freshMs && this.aboveLimit(m.kmh);
     if ((this.last || this.measured) && this.heldBase() > range.max + EPS) this.request(range.max);
     // The belt may run above the new limit, not confirmed yet: the limit is sent at once if that is no step up of more than
-    // maxStep from the last command (it can only slow the belt down); a bigger step up waits for two readings (limitPending)
+    // maxStep from the last command (it can only slow the belt down); a bigger step up waits for two readings (limitPending).
+    // So this branch may act on one reading: the command is within maxStep of the last command and below the belt.
     else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(range.max);
     else {
       this.limitPending = above;

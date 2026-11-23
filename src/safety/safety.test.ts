@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   beltMaybeRunning, checkConsoleCommand, controlAvailability, clampSpeed, DEFAULT_MAX_STEP, DEFAULT_SPEED_LIMIT,
-  parseHexBytes, planRamp, RAMP_INTERVAL_MS, SpeedGovernor, StandstillDetector, type ConsoleContext,
+  LIMIT_MAX, parseHexBytes, planRamp, RAMP_INTERVAL_MS, SpeedGovernor, StandstillDetector, type ConsoleContext,
 } from './safety.ts';
 import type { Notice } from '../protocol/notice.ts';
 
@@ -459,6 +459,32 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([2.5, 5]); // 1 s later, a second reading: the limit in one command
   });
 
+  it('promise 2 exception (a): the limit is lowered to a value at or below the last command: sent in one command, no reading needed (last 8, setLimits(5) sends 5 at once)', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(8);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.setRange({ min: 1, max: 5 });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map(s => s[1])).toEqual([5]);
+  });
+
+  it('promise 2 exception (b): two readings at least 1 s apart show the belt above the new limit: the limit is sent in one command', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(2);
+    gov.request(2.5);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(7);
+    gov.setRange({ min: 1, max: 5 });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sent.map(s => s[1])).toEqual([2.5]);
+    await vi.advanceTimersByTimeAsync(500);
+    gov.noteMeasured(7);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.map(s => s[1])).toEqual([2.5, 5]);
+  });
+
   it('a belt slowed on the console: one reading lowers the base at once (last 8, reading 3, request 9: at most 3.5)', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
@@ -722,7 +748,7 @@ describe('SpeedGovernor', () => {
         // nothing sent at all (belt not moving) is fine too
         expect(sent[0]?.[1] ?? 2, `${maxStep} ${r}`).toBeLessThanOrEqual(2 + maxStep + 1e-9);
         // and never more than maxStep above the slower of the last command and a plausible reading
-        const plausible = Number.isFinite(r) && r >= 0 && r <= 655.35;
+        const plausible = Number.isFinite(r) && r >= 0 && r <= LIMIT_MAX;
         if (plausible && sent.length) expect(sent[0]![1], `min ${maxStep} ${r}`).toBeLessThanOrEqual(Math.max(1, Math.min(2, r) + maxStep) + 1e-9);
       }
     }
