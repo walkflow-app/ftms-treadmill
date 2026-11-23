@@ -128,8 +128,9 @@ one of them is a `safety` commit and at least a minor version.
 1. Nothing above `speedLimit` (or the device maximum, whichever is lower) is ever sent, also not through `sendRaw`.
    A `speedLimit` above 6 km/h counts only with `limitConfirmed: true`, otherwise it is 6 km/h.
 2. The speed changes by at most `maxStep` per command and not more often than every `RAMP_INTERVAL_MS`, counted from when
-   the previous command was written. One exception: when the limit is lowered below the speed of the belt, the new limit
-   is sent in one command (the limit applies at once).
+   the previous command was written. One exception: a lowered limit is sent in one command when (a) it is lowered
+   to a value at or below the last command (an ordinary step down for the belt, no reading needed), or (b) two readings at
+   least 1 s apart show the belt above the new limit.
 3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. If that speed
    could not be set (the write failed, the limit leaves no allowed speed, or the treadmill refused it), no Start is sent:
    `start()` returns `false` with `start-speed-failed`. A treadmill that does not answer within a second (`SPEED_ANSWER_MS`) is let through, so one that gives no
