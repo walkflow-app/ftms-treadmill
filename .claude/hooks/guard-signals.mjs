@@ -25,6 +25,21 @@ const SIGNAL = /^(?:approved|\/hardware-ok)$/i;
 const FLAG = /^.*?(?:^|\s)(?:--body|--raw-field|--field|-b|-f|-F)(?:=|\s+)/;
 // The rules themselves: a pull request that changes one of these is the maintainer's to merge, in every repository.
 const RULES = /^(?:\.github\/|\.claude\/|scripts\/|VISION\.md$|process\/PRINCIPLES\.md$)|(?:^|\/)(?:CLAUDE\.md|CODEOWNERS)$/;
+// What the repositories keep for the maintainer (PROTECTED in walkflow's and ftms-treadmill's scripts/agent-pipeline.mjs), and
+// belt and trust code (SAFETY and TRUST in scripts/paths.mjs): their two reviews are not visible to the hook, and a new pull
+// request has no `safety` label yet. One list for all repositories, wider than each: a merge that asks too often is a click,
+// one that does not ask is a hole. Keep it in step with those lists (a change there is a change here).
+const KEPT = [
+  /^HARDWARE-TESTS\.md$/, /^docs\/LIBRARY\.md$/, /^tests\/architecture\.test\.ts$/, /^package(?:-lock)?\.json$/,
+  /^\.(?:npmrc|nvmrc|node-version|gitignore|gitattributes)$/, /^\.husky\//, /^\.oxlintrc\.json$/, /^knip\.json$/,
+  /^tsconfig[^/]*\.json$/, /^vite\.config\.ts$/, /^vitest\.config/, /^index\.html$/, /^build\//,
+  /^release-please-config\.json$/, /^\.release-please-manifest\.json$/, /^electron-builder\.config\.cjs$/,
+  /^public\/legal\//,
+];
+const BELT = [
+  /^src\/core\/safety\//, /^src\/ui\/live\//, /^src\/core\/training\//, /^src\/platform\/bt-devices/, /^src\/ui\/background\.ts$/,
+  /^src\/main\.ts$/, /^electron\//, /^src\/net\//, /^src\/core\/share\//, /^src\/safety\//, /^src\/protocol\//, /^src\/device\//,
+];
 // Labels that keep a pull request from being merged by a session without a question.
 const STOP_LABELS = ['needs-maintainer', 'hold', 'safety', 'needs-hardware'];
 // `gh pr view --json files` returns at most 100 files: with that many, a rules file further down could be missed.
@@ -100,7 +115,7 @@ export const mergeTargets = command => [...bareOf(command).matchAll(MERGE)].map(
 
 /** The first of them, as { number, repo }, or null. */
 export const mergeTarget = command => {
-  const t = mergeTargets(command)[0];
+  const t = mergeTargets(command).at(0);
   return t ? { number: t.number, repo: t.repo } : null;
 };
 
@@ -117,7 +132,7 @@ const lookupPr = ({ number, repo }, cwd) => {
 };
 
 const onStopList = pr => STOP_LABELS.some(l => pr.labels.includes(l)) || pr.files.length >= FILES_CUT
-  || pr.files.some(f => RULES.test(f));
+  || pr.files.some(f => RULES.test(f) || KEPT.some(p => p.test(f)) || BELT.some(p => p.test(f)));
 
 const PUSH = /(?:^|[;&|(])\s*(?:\w+=\S*\s+)*git\s+push\b([^\n;&|)]*)/gm;
 
@@ -135,6 +150,7 @@ const CONFIRM = {
     + 'hardware check done): confirm only if you give it.',
   merge: 'This merge is on the stop list: the pull request carries `needs-maintainer`, `hold`, `safety` or `needs-hardware`, '
     + 'or it changes the rules themselves (.github/, .claude/, scripts/, CLAUDE.md, CODEOWNERS, VISION.md, PRINCIPLES.md), '
+    + 'files the maintainer keeps (package.json, build and gate configs, public/legal/, docs/LIBRARY.md) or belt and trust code, '
     + 'or it is `--auto`, or the hook cannot tell which pull request it is. Confirm this merge.',
   label: 'Removing `needs-maintainer` or `hold` decides a stop-list item: confirm it.',
   push: 'Only a plain push of one branch to origin goes without a question: this push names more, forces, deletes or '
