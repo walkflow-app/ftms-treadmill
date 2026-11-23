@@ -82,9 +82,10 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          # The pull requests of the builder agent have github-actions as their author; the action runs on a pull request only when its
-          # author has write access or is an allowed bot. Only this one bot, never '*'.
-          allowed_bots: github-actions
+          # The pull requests of the builder agent have github-actions as their author, and the app walkflow-writer starts the checks
+          # with an empty commit; the action runs only when the author of the pull request and the one who started the run have
+          # write access or are allowed bots. Exactly these two, never '*'.
+          allowed_bots: github-actions,walkflow-writer
           prompt: |
             Review pull request #${{ github.event.pull_request.number }} of ${{ github.repository }}, at commit
             ${{ github.event.pull_request.head.sha }}.
