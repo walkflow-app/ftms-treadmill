@@ -552,6 +552,46 @@ describe('SpeedGovernor', () => {
     expect(gov.target).toBe(4.5);
   });
 
+  it('a step waiting in the write queue is withdrawn when the limit is lowered below it, and the lowered limit goes out instead', async () => {
+    // A write queue as the Bluetooth session has it: one write at a time, `current` asked when a write's turn comes
+    const wrote: number[] = [];
+    const queue: { kmh: number; current?: () => boolean; done: (ok: boolean) => void }[] = [];
+    const gov = new SpeedGovernor({
+      send: (kmh, current) => new Promise<boolean>(done => queue.push({ kmh, current, done })),
+      now: () => Date.now(),
+    });
+    const turn = () => { // the head of the queue gets its turn
+      const w = queue.shift()!;
+      if (w.current && !w.current()) { w.done(false); return; }
+      wrote.push(w.kmh); w.done(true);
+    };
+    gov.setRange({ min: 1, max: 6 });
+    gov.noteMeasured(4);
+    gov.request(5.5);
+    await vi.advanceTimersByTimeAsync(0); // the step 4.5 waits for its turn (a slow write)
+    expect(queue.map(w => w.kmh)).toEqual([4.5]);
+    gov.setRange({ min: 1, max: 4 }); // the limit is lowered while it waits
+    turn(); // its turn comes: 4.5 is above the new limit
+    await vi.advanceTimersByTimeAsync(10_000);
+    while (queue.length) { turn(); await vi.advanceTimersByTimeAsync(10_000); }
+    expect(wrote.every(k => k <= 4)).toBe(true);
+    expect(wrote.at(-1)).toBe(4);
+    expect(gov.target).toBe(4);
+  });
+
+  it('a step at or below the limit is still sent', async () => {
+    const wrote: number[] = [];
+    const gov = new SpeedGovernor({
+      send: async (kmh, current) => { if (current && !current()) return false; wrote.push(kmh); return true; },
+      now: () => Date.now(),
+    });
+    gov.setRange({ min: 1, max: 6 });
+    gov.noteMeasured(2);
+    gov.request(2.5);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(wrote).toEqual([2.5]);
+  });
+
   it('a lowered limit pending on one reading is dropped if the next one is not above it', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });

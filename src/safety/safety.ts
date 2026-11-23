@@ -382,12 +382,25 @@ export class SpeedGovernor {
     const mine = { kmh: next, at: now };
     this.last = mine;
     this.deps.onChange?.();
-    void this.deps.send(next, () => gen === this.gen).catch(() => false).then(ok => {
+    // The step's turn in the write queue may come after the limit was lowered: a step above the limit then is withdrawn
+    let withdrawn = false;
+    const current = () => {
+      if (gen !== this.gen) return false;
+      if (next > this.range.max + EPS) { withdrawn = true; return false; }
+      return true;
+    };
+    void this.deps.send(next, current).catch(() => false).then(ok => {
       this.sending = false;
       // The interval counts from when the write finished: a slow write must not bring two steps to the treadmill together
       if (ok && this.last === mine) mine.at = this.deps.now();
       // The belt never got this speed: the next ramp starts from the one it got before
       if (!ok && this.last === mine) this.last = before;
+      // Withdrawn for the lowered limit, not failed: the ramp goes on, planned again against the new limit
+      if (gen === this.gen && !ok && withdrawn) {
+        this.pump();
+        this.deps.onChange?.();
+        return;
+      }
       if (gen === this.gen && !ok) {
         this._target = null;
         this.deps.notice?.({ code: 'ramp-aborted' });

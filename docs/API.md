@@ -516,7 +516,7 @@ tm.on('notice', n => console.log(noticeText(n)));
 | `speed-range`, `incline-range` | `range` | the ranges it accepts |
 | `speed-range-unreadable`, `incline-range-unreadable` | | not readable; 1–12 km/h is assumed for the speed |
 | `heart-rate` | `available` | whether it offers heart rate |
-| `write-dropped` | `bytes` | a waiting command was dropped because a Stop or Pause went first |
+| `write-dropped` | `bytes` | a waiting command was dropped because a Stop or Pause went first, or the speed limit was lowered below it while it waited |
 | `write-failed` | `error`: a [`TreadmillErrorCode`](#treadmillerror) or `{ message }` | a command did not go through |
 | `no-allowed-speed` | `min`, `max` | the limit is below the treadmill's lowest speed: nothing can be sent |
 | `speed-held-until-moving` | `kmh` | the speed is held until the belt moves |
