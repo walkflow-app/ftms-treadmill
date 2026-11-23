@@ -225,8 +225,9 @@ belt moves. Before Start, or while the belt still stands, the speed is held (`sp
 once it moves. After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a
 standstill end) the belt coasts down while it still reports speeds above 0: nothing is sent then either. The speed asked
 for is held until the belt was seen standing (readings below 0.1 km/h at least 1 s apart, none above in between, so one
-spurious 0.0 does not count) or a new run begins (`start()`, a raw Start, a Machine Status `started` once the belt is no
-longer coasting down: a late `started` during the coast-down does not count), and a moving belt after that. A treadmill
+spurious 0.0 does not count) or a new run begins (`start()`, a raw Start, a Machine Status `started` when the last reading
+was below 0.1 km/h: a late `started` while the belt still reports a speed, or before any reading since the stop, does not
+count), and a moving belt after that. A treadmill
 that reports no standing belt and no `started` keeps the speed held until a new run begins or the next connection: nothing
 is sent then, and `speed-held-until-moving` says so. A stop drops the speed asked for.
 

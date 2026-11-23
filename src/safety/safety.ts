@@ -369,6 +369,17 @@ export class SpeedGovernor {
   }
 
   /**
+   * The treadmill reports Machine Status "started". While the belt coasts down after a stop this is a new run only if the
+   * last reading since the stop showed a standing belt (below STANDING_KMH): a late or mistaken "started" while the belt
+   * still reports a speed, or before anything was measured, does not end the wait (#25, one spurious 0.0: #49).
+   */
+  startedReported() {
+    if (!this.coasting) return;
+    const m = this.measured;
+    if (m !== null && m.kmh >= 0 && m.kmh < STANDING_KMH) this.newRun();
+  }
+
+  /**
    * Additionally forget the last command and measured value (after stop, start, disconnect).
    * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (readings below STANDING_KMH
    * at least CONFIRM_MS apart, none above in between) or a new run begins (reset without afterStop, newRun).

@@ -206,6 +206,41 @@ describe('SpeedGovernor', () => {
       expect(sent.length).toBe(1);
     });
 
+    it('a Machine Status started while the last reading shows a moving belt does not end the wait', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [3.5, 0, 2.5]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(600); }
+      gov.startedReported();
+      for (const kmh of [2, 1.5]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(2000); }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+    });
+
+    it('a Machine Status started with nothing measured since the stop does not end the wait', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      gov.startedReported();
+      for (const kmh of [2.5, 2]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(2000); }
+      expect(sent).toEqual([]);
+    });
+
+    it('a Machine Status started after a reading of a standing belt is a new run', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(2);
+      gov.noteMeasured(3);
+      gov.noteMeasured(0);
+      gov.startedReported();
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent.length).toBe(1);
+    });
+
     it('a plain reset (start, new connection) does not wait', async () => {
       const { gov, sent } = make();
       gov.reset();

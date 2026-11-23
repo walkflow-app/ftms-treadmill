@@ -1,22 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { BeltPhase } from '../safety/belt-phase.ts';
 import type { SpeedGovernor, StandstillDetector } from '../safety/safety.ts';
 import { BeltState } from './belt-state.ts';
 import { setupReports, type ReportsHost } from './reports.ts';
 
 const dv = (...bytes: number[]) => new DataView(new Uint8Array(bytes).buffer);
 
-function rig(opts: { program?: boolean; standstillFires?: boolean; phase?: BeltPhase } = {}) {
+function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   const calls: string[] = [];
   const session = new BeltState();
   const phase = {
     stopRequested: vi.fn(() => calls.push('phase stop')),
     speed: vi.fn(),
-    phase: vi.fn(() => opts.phase ?? 'standing'),
   } satisfies ReportsHost['phase'];
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
-    newRun: vi.fn(),
+    startedReported: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;
@@ -60,18 +58,11 @@ describe('Machine Status', () => {
     expect(r.host.ended).not.toHaveBeenCalled();
   });
 
-  it('started: the belt counts as started', () => {
+  it('started: the belt counts as started, and the governor decides whether the wait after a stop ends', () => {
     const r = rig();
     r.reports.machineStatus(dv(0x04));
     expect(r.session.beltStarted).toBe(true);
-    expect(r.governor.newRun).toHaveBeenCalledOnce();
-  });
-
-  it('started while a stop is under way (the belt still coasts down): no new run, the wait goes on', () => {
-    const r = rig({ phase: 'stopping' });
-    r.reports.machineStatus(dv(0x04));
-    expect(r.session.beltStarted).toBe(true);
-    expect(r.governor.newRun).not.toHaveBeenCalled();
+    expect(r.governor.startedReported).toHaveBeenCalledOnce();
   });
 
   it('control lost: remembered, so the next stop asks for control first', () => {

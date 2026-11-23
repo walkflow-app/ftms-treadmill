@@ -823,6 +823,17 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(tm.state.target).toBe(5);
   });
 
+  it('a late started after one spurious 0.0 during the coast-down does not end the wait (#49)', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [3.5, 0, 2.5]) { dev.speed(kmh); clock += 600; }
+    dev.machineStatus(0x04);
+    for (const kmh of [2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
   it('a belt that stands and is started on the treadmill is a new run: the held speed is ramped', async () => {
     const { tm, dev } = await coasting('stop');
     dev.speed(3.5);

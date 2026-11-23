@@ -259,7 +259,6 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       // Moving while no stop is under way: the belt was started again (perhaps on the treadmill, without telling)
       if (kmh >= MOVING_KMH && tracker.phase(at) === 'running') newRun();
     },
-    phase(at: number) { return tracker.phase(at); },
   };
 
   function setStopFailed(failed: boolean) {
