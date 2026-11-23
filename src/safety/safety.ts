@@ -343,6 +343,16 @@ export function beltMaybeRunning(s: { startedByApp: boolean; lastMeasuredKmh: nu
 const READING_FRESH_MS = 5000;
 
 /**
+ * The one rule for "the belt is measured moving", for the Start button and for start() alike: a reading of MOVING_KMH or more
+ * that is fresh, or an older one while the belt counts as started by the app (and not stopped since). A treadmill that stops
+ * reporting once the belt stands does not lock Start, one that was started by the app and has not been heard of does.
+ */
+export function beltMeasuredMoving(s: { measuredKmh: number | undefined; measuredAgeMs: number; startedByApp: boolean }): boolean {
+  if (s.measuredKmh === undefined || s.measuredKmh < MOVING_KMH) return false;
+  return s.startedByApp || s.measuredAgeMs <= READING_FRESH_MS;
+}
+
+/**
  * Which of the three control buttons can be pressed. Stop can always be pressed while there is a connection: nothing
  * about the belt's state, however sure the app is, takes it away. Start waits while the belt is known to move, a start
  * was just sent or a program runs (no second start on top of it). Pause is there whenever the belt may be running.
@@ -358,7 +368,7 @@ export function controlAvailability(s: {
   programActive: boolean;
 }): { start: boolean; pause: boolean; stop: boolean } {
   if (!s.connected) return { start: false, pause: false, stop: false };
-  const moving = s.measuredKmh !== undefined && s.measuredKmh >= MOVING_KMH && s.measuredAgeMs <= READING_FRESH_MS;
+  const moving = beltMeasuredMoving(s);
   return {
     start: !moving && !s.startingNow && !s.programActive,
     pause: beltMaybeRunning({ startedByApp: s.startedByApp, lastMeasuredKmh: s.measuredKmh }) || s.startingNow || s.programActive,

@@ -134,8 +134,9 @@ export interface Treadmill {
   /** Ends the connection; disconnected follows. Does not stop the belt: stop first if it may be running. */
   disconnect(): void;
   /**
-   * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for.
-   * @returns false if a command failed, or a Stop or Pause came in meanwhile (then nothing more of it is sent)
+   * Asks for control, sets the lowest speed, sends Start, then ramps up to the last speed asked for. No Start is sent if the
+   * lowest speed was not set or refused (start-speed-failed), and nothing at all on a belt measured moving (start-belt-moving).
+   * @returns false if a command failed, nothing was sent for one of those reasons, or a Stop or Pause came in meanwhile
    */
   start(): Promise<boolean>;
   /**
@@ -183,6 +184,13 @@ export interface Treadmill {
    */
   on<E extends keyof TreadmillEventMap>(event: E, listener: (payload: TreadmillEventMap[E]) => void): () => void;
 }
+
+/** How long Start waits for the treadmill's answer to the start speed; one that gives none is let through */
+const SPEED_ANSWER_MS = 1000;
+/** How long a write that got no answer is remembered: a slow answer to it is still its own, not the next write's */
+const SPEED_WRITE_MEMORY_MS = 10_000;
+/** Control Point result code "Success" */
+const RESULT_OK = 1;
 
 /** Before the treadmill says otherwise */
 const DEFAULT_DEVICE_RANGE = { min: 1.0, max: 12.0 };
@@ -233,7 +241,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
 
   const governor = new SpeedGovernor({
     // A ramp step ended while it waited in the queue is not written (a stop reported by the treadmill, #28 F)
-    send: (kmh, current) => session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}),
+    send: (kmh, current) => { noteGovernorSpeedWrite(); return session.send(cmdSetSpeed(kmh), current ? { stale: () => !current() } : {}); },
     now,
     notice,
     onChange: () => {
@@ -258,6 +266,56 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     emit('stopFailed', failed);
   }
 
+  /**
+   * The Set Speed commands written and not yet answered, oldest first. The treadmill answers in the order it got them, so the
+   * first answer belongs to the first entry: one is handed to the start speed only if it is the answer to that write. An answer
+   * with no entry (a late one to an earlier start, one before the write) and the answer to a raw Set Speed are not. An entry that
+   * waited longer than SPEED_ANSWER_MS stays as a tombstone (nobody waits for it any more, but a late answer is consumed by it and
+   * not handed to a later write) and is forgotten after SPEED_WRITE_MEMORY_MS (a treadmill that never answers must not shift the
+   * answers that follow for ever).
+   */
+  const pendingSpeedWrites: { at: number; owner: SpeedAnswerListener | null }[] = [];
+  interface SpeedAnswerListener { armed: boolean; answered(result: number): void }
+  /** Who waits for the treadmill's answer to the start speed, and has not seen its write yet */
+  const speedListeners = new Set<SpeedAnswerListener>();
+  function notePendingSpeedWrite(owner: SpeedAnswerListener | null) {
+    const t = now();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_WRITE_MEMORY_MS) pendingSpeedWrites.shift();
+    pendingSpeedWrites.push({ at: t, owner });
+  }
+  /** The governor writes the start speed (and ramp steps) here: the first write after a listener was set up is the one it waits for */
+  function noteGovernorSpeedWrite() {
+    const owner = [...speedListeners].find(l => !l.armed) ?? null;
+    if (owner) owner.armed = true;
+    notePendingSpeedWrite(owner);
+  }
+  function speedAnswerReceived(result: number) {
+    const t = now();
+    while (pendingSpeedWrites.length > 0 && t - pendingSpeedWrites[0]!.at > SPEED_WRITE_MEMORY_MS) pendingSpeedWrites.shift();
+    const entry = pendingSpeedWrites.shift();
+    // A refusal is never matched: whoever waits for the start speed and has written it takes any refusal as its own (fails
+    // closed: a ghost entry of a write that never went out, or a late order, cannot let a refused start speed through). Only a
+    // success has to be the answer to that very write.
+    if (result === RESULT_OK) entry?.owner?.answered(result);
+    else for (const l of speedListeners) if (l.armed) l.answered(result);
+  }
+  function expectSpeedAnswer() {
+    let answered!: (result: number | null) => void;
+    const got = new Promise<number | null>(resolve => { answered = resolve; });
+    const listener: SpeedAnswerListener = { armed: false, answered: result => { answered(result); } };
+    speedListeners.add(listener);
+    return {
+      wait: async () => {
+        // No Set Speed was written (nothing to answer): no wait for nothing
+        if (!listener.armed) { speedListeners.delete(listener); return null; }
+        const result = await Promise.race([got, clock.wait(SPEED_ANSWER_MS).then(() => null)]);
+        speedListeners.delete(listener);
+        return result;
+      },
+      drop: () => { speedListeners.delete(listener); },
+    };
+  }
+
   const belt = setupBelt({
     session, phase, governor, standstill, now,
     wanted: () => wanted,
@@ -265,6 +323,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     notice,
     wait: ms => clock.wait(ms),
     stopFailed: setStopFailed,
+    expectSpeedAnswer,
   });
 
   const reports = setupReports({
@@ -278,7 +337,10 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       if (s.event?.kind === 'started') newRun();
       emit('machineStatus', s);
     },
-    controlResponse: r => emit('controlResponse', r),
+    controlResponse: r => {
+      emit('controlResponse', r);
+      if (r.requestOp === OP.SET_SPEED) speedAnswerReceived(r.result);
+    },
   });
 
   const effectiveMax = () => Math.min(deviceRange.max, speedLimit);
@@ -398,6 +460,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       return { action: 'sent', ok };
     }
     if (check.setSpeed !== undefined) governor.noteExternalCommand(check.setSpeed);
+    if (bytes[0] === OP.SET_SPEED) notePendingSpeedWrite(null);
     return { action: 'sent', ok: await c.send(data) };
   }
 

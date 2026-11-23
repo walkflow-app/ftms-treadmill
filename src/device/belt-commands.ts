@@ -6,13 +6,15 @@
 import { cmdPause, cmdRequestControl, cmdStart, cmdStop } from '../protocol/ftms.ts';
 import type { Notice } from '../protocol/notice.ts';
 import type { BeltPhaseTracker } from '../safety/belt-phase.ts';
-import type { SpeedGovernor, StandstillDetector } from '../safety/safety.ts';
+import { beltMeasuredMoving, type SpeedGovernor, type StandstillDetector } from '../safety/safety.ts';
 import type { BeltState } from './belt-state.ts';
 
 /** How often a Stop or Pause is sent before the app says that it could not stop the belt */
 export const STOP_ATTEMPTS = 3;
 /** The wait before it is sent again */
 export const STOP_RETRY_MS = 300;
+/** Control Point result code "Success" */
+const RESULT_OK = 1;
 
 export interface BeltHost {
   session: BeltState;
@@ -32,6 +34,11 @@ export interface BeltHost {
    * treadmill. false: a Stop or Pause went through, the warning can go.
    */
   stopFailed(failed: boolean): void;
+  /**
+   * Starts listening for the treadmill's answer to the next Set Speed (call it before the command is written: an answer can
+   * come before the write returns). wait resolves with the result code, or null if none came in time; drop stops listening.
+   */
+  expectSpeedAnswer(): { wait(): Promise<number | null>; drop(): void };
 }
 
 export function setupBelt(host: BeltHost) {
@@ -84,10 +91,21 @@ export function setupBelt(host: BeltHost) {
     return sendStop(cmdPause());
   }
 
-  /** False if it failed, or if a stop or pause came in while it was being sent: then nothing more of it goes out. */
+  /**
+   * False if it failed, or if a stop or pause came in while it was being sent: then nothing more of it goes out. Start is only
+   * sent once the start speed is set and not refused (a treadmill would run up to its last speed, past the ramp), and never on a
+   * belt measured moving (a fresh reading, or an older one while the belt counts as started; the start speed would drop the belt to the lowest speed in one step).
+   */
   async function start(): Promise<boolean> {
     const c = session.client;
     if (!c) return false;
+    // Nothing is touched: the belt runs on, and so does a ramp that may be going. An old reading counts only while the belt is
+    // known to have been started and not stopped since: a treadmill that stops reporting at a standstill must not lock Start
+    // (the same rule as controls.start, so the app never offers a Start that does nothing)
+    if (beltMeasuredMoving({ measuredKmh: session.lastMeasured, measuredAgeMs: host.now() - session.lastMeasuredAt, startedByApp: session.beltStarted })) {
+      host.notice({ code: 'start-belt-moving' });
+      return false;
+    }
     const mine = ++epoch;
     // The speed asked for last (before the stop, or chosen while the belt stood) is asked for again once Start went out; the
     // governor holds it until the belt moves and then ramps up from the start speed
@@ -98,9 +116,21 @@ export function setupBelt(host: BeltHost) {
     if (epoch !== mine) return false;
     if (a) session.controlLost = false;
     // A treadmill runs up to the speed it last had after Start, so the ramp would be skipped: take that speed away first
+    const answer = host.expectSpeedAnswer();
     const speedSet = await governor.startSpeed();
+    if (epoch !== mine) { answer.drop(); return false; }
+    if (!speedSet) {
+      answer.drop();
+      host.notice({ code: 'start-speed-failed' });
+      return false;
+    }
+    // A write that went through is not yet a speed the treadmill took; one that gives no answer in time is let through
+    const result = await answer.wait();
     if (epoch !== mine) return false;
-    if (!speedSet) host.notice({ code: 'start-speed-failed' });
+    if (result !== null && result !== RESULT_OK) {
+      host.notice({ code: 'start-speed-failed' });
+      return false;
+    }
     const b = await c.send(cmdStart());
     // A stop that came in while Start was on its way was sent after it, and the belt is its business now
     if (epoch !== mine) return false;
