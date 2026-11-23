@@ -23,4 +23,5 @@ Read `docs/LIBRARY.md`, `docs/API.md`, `src/index.ts` and the entry points, then
    commented; README and LIBRARY.md still true.
 6. **The app.** What Walkflow (`../walkflow`) has to change to use it, and whether that is easy.
 
-Verdict first (**good** / **change before merging** / **rethink**), then the points with concrete proposals.
+Verdict first: **good** (`OK`), **change before merging** (`OK with remarks` or `changes needed`), **rethink** (`blocking`: only when
+the approach is wrong or breaks a promise), then the points with concrete proposals. A preference or a nit is a remark and never blocks.
