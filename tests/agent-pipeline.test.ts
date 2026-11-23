@@ -95,7 +95,7 @@ describe('agent pipeline: the files', () => {
   it('finds safety paths and protected paths, also under the old name of a rename', () => {
     expect(classify(safetyFiles).safety).toBe(true);
     expect(classify([{ filename: 'examples/x.ts', previous_filename: '.github/workflows/ci.yml', status: 'renamed' }]).protected).toEqual(['.github/workflows/ci.yml']);
-    for (const f of ['CLAUDE.md', 'package.json', 'scripts/safety-gate.mjs', 'tests/architecture.test.ts'])
+    for (const f of ['CLAUDE.md', 'package.json', 'scripts/safety-gate.mjs', 'tests/architecture.test.ts', 'docs/LIBRARY.md'])
       expect(classify([{ filename: f }]).protected).toEqual([f]);
     expect(classify([{ filename: 'examples/simulator.ts' }]).protected).toEqual([]);
   });
@@ -103,7 +103,7 @@ describe('agent pipeline: the files', () => {
   it('belt code is not protected: the pipeline merges it after two reviews (meta process/flow.md)', () => {
     for (const f of ['src/device/treadmill.ts', 'src/safety/safety.ts', 'src/protocol/ftms.ts', 'src/device/web-bluetooth.ts'])
       expect(classify([{ filename: f }])).toMatchObject({ safety: true, trust: false, protected: [] });
-    for (const f of ['src/index.ts', 'src/sim.ts', 'README.md', 'docs/LIBRARY.md', 'examples/simulator.ts']) expect(classify([{ filename: f }])).toMatchObject({ safety: false, trust: false });
+    for (const f of ['src/index.ts', 'src/sim.ts', 'README.md', 'examples/simulator.ts']) expect(classify([{ filename: f }])).toMatchObject({ safety: false, trust: false });
   });
 
   it('fails closed when the API cannot list all files', () => {
@@ -122,7 +122,7 @@ describe('agent pipeline: the files', () => {
     expect(checkFix(['examples/a.ts', '.github/workflows/agent-fix.yml']).ok).toBe(false);
     expect(checkFix(['scripts/é.mjs']).ok).toBe(false);
     for (const f of ['.npmrc', '.husky/pre-commit', 'knip.json']) expect(checkFix([f]).ok).toBe(false);
-    for (const f of ['.gitattributes', '.gitignore', 'README.md', 'docs/LIBRARY.md', 'src/device/treadmill.ts', 'examples/simulator.ts']) expect(checkFix([f]).ok).toBe(true);
+    for (const f of ['.gitattributes', '.gitignore', 'README.md', 'src/device/treadmill.ts', 'examples/simulator.ts']) expect(checkFix([f]).ok).toBe(true);
   });
 });
 

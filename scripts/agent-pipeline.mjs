@@ -37,6 +37,8 @@ export const PROTECTED = [
   /^package(-lock)?\.json$/, /^\.npmrc$/, /^\.nvmrc$/, /^\.node-version$/, /^\.husky\//,
   /^\.oxlintrc\.json$/, /^knip\.json$/, /^tsconfig[^/]*\.json$/, /^vitest\.config/,
   /^release-please-config\.json$/, /^\.release-please-manifest\.json$/,
+  // The promises of the library: a change is a `safety` commit and a minor version, merged by the maintainer (no test is demanded for a wording)
+  /^docs\/LIBRARY\.md$/,
 ];
 const TEST = /\.test\.(ts|mjs)$/;
 const CONVENTIONAL = /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|safety)(\([^)]+\))?: \S/;

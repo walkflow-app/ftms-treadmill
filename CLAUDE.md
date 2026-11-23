@@ -73,7 +73,7 @@ npm run example                                                  # drives the si
   **Process notes** in your pull request or last comment. Never loosen a rule in your own run.
 
 **In this repository:** belt code is the list `SAFETY` in `scripts/paths.mjs` (one list: the safety gate, the pipeline, the release
-gate and `review-model.sh` read it; a change to a promise in docs/LIBRARY.md is a `safety` commit). The check on a treadmill comes
+gate and `review-model.sh` read it; a change to a promise in docs/LIBRARY.md is a `safety` commit and is merged by the maintainer, not by the pipeline). The check on a treadmill comes
 before **publishing** to npm, once per release: `npm-publish.yml` stops until every pull request with belt code since the last
 release has a `/hardware-ok` from the maintainer, or one is on the release pull request (`scripts/release-gate.mjs`). The agent
 pipeline merges like in walkflow once the repository variable `AGENT_PIPELINE` is `on` (the maintainer's setting), and only the
