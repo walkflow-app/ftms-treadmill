@@ -1162,6 +1162,11 @@ describe('controlAvailability: which of Start, Pause and Stop can be pressed', (
     expect(controlAvailability({ ...idle, measuredKmh: 3, measuredAgeMs: 5001 }).start).toBe(true);
     expect(controlAvailability({ ...idle, measuredKmh: 3, measuredAgeMs: 60_000 }).pause).toBe(true);
   });
+  it('an old reading of a moving belt that counts as started still blocks Start (the same rule as start())', () => {
+    expect(controlAvailability({ ...idle, measuredKmh: 0.5, measuredAgeMs: 60_000, startedByApp: true }).start).toBe(false);
+    expect(controlAvailability({ ...idle, measuredKmh: 0.5, measuredAgeMs: 60_000, startedByApp: false }).start).toBe(true);
+  });
+
 
   it('a start that was sent but where the belt has not moved yet: Pause, no second Start', () => {
     expect(controlAvailability({ ...idle, startingNow: true })).toEqual({ start: false, pause: true, stop: true });
