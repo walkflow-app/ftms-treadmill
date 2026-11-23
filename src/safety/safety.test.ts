@@ -556,9 +556,11 @@ describe('SpeedGovernor', () => {
     // A write queue as the Bluetooth session has it: one write at a time, `current` asked when a write's turn comes
     const wrote: number[] = [];
     const queue: { kmh: number; current?: () => boolean; done: (ok: boolean) => void }[] = [];
+    const logs: Notice[] = [];
     const gov = new SpeedGovernor({
       send: (kmh, current) => new Promise<boolean>(done => queue.push({ kmh, current, done })),
       now: () => Date.now(),
+      notice: n => logs.push(n),
     });
     const turn = () => { // the head of the queue gets its turn
       const w = queue.shift()!;
@@ -577,19 +579,31 @@ describe('SpeedGovernor', () => {
     expect(wrote.every(k => k <= 4)).toBe(true);
     expect(wrote.at(-1)).toBe(4);
     expect(gov.target).toBe(4);
+    expect(logs).not.toContainEqual({ code: 'ramp-aborted' }); // a withdrawal for the limit is not a failure
   });
 
-  it('a step at or below the limit is still sent', async () => {
+  it('a step waiting in the write queue is still sent when the limit is lowered to exactly it', async () => {
     const wrote: number[] = [];
+    const queue: { kmh: number; current?: () => boolean; done: (ok: boolean) => void }[] = [];
+    const logs: Notice[] = [];
     const gov = new SpeedGovernor({
-      send: async (kmh, current) => { if (current && !current()) return false; wrote.push(kmh); return true; },
+      send: (kmh, current) => new Promise<boolean>(done => queue.push({ kmh, current, done })),
       now: () => Date.now(),
+      notice: n => logs.push(n),
     });
     gov.setRange({ min: 1, max: 6 });
     gov.noteMeasured(2);
     gov.request(2.5);
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0); // 2.5 waits for its turn
+    expect(queue.map(w => w.kmh)).toEqual([2.5]);
+    gov.setRange({ min: 1, max: 2.5 }); // the limit is lowered to exactly the waiting step
+    const w = queue.shift()!;
+    expect(w.current?.() ?? true).toBe(true); // still current at its turn: it is written
+    wrote.push(w.kmh); w.done(true);
+    await vi.advanceTimersByTimeAsync(10_000);
     expect(wrote).toEqual([2.5]);
+    expect(queue).toEqual([]);
+    expect(logs).toEqual([]);
   });
 
   it('a lowered limit pending on one reading is dropped if the next one is not above it', async () => {
