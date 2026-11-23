@@ -328,7 +328,7 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([4.5, 5]);
   });
 
-  it('a limit lowered below an unconfirmed faster belt is sent in the very next command (promise 2: at once)', async () => {
+  it('a lowered limit does not replace a lower target: one possibly wrong reading of 8, target 4.5, limit 5: nothing above 4.5', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
     gov.noteMeasured(4);
@@ -337,8 +337,36 @@ describe('SpeedGovernor', () => {
     gov.noteMeasured(8); // the remote, one reading only
     await vi.advanceTimersByTimeAsync(300);
     gov.setRange({ min: 1, max: 5 });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sent.map(s => s[1])).toEqual([4.5]);
+    expect(gov.target).toBe(4.5);
+  });
+
+  it('a lowered limit with no target is still sent at once (one reading, within maxStep of the last command)', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(4);
+    gov.noteExternalCommand(4.5);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(8);
+    gov.setRange({ min: 1, max: 5 });
     await vi.advanceTimersByTimeAsync(0);
-    expect(sent.map(s => s[1])).toEqual([4.5, 5]);
+    expect(sent.map(s => s[1])).toEqual([5]);
+  });
+
+  it('target 4.5, one reading after a console press (6.1, 8) and setLimits(5): nothing above 4.5 is sent, the target stays', async () => {
+    for (const reading of [5.1, 6.1, 8]) {
+      const { gov, sent } = make();
+      gov.setRange({ min: 1, max: 10 });
+      gov.noteMeasured(4);
+      gov.request(4.5);
+      await vi.advanceTimersByTimeAsync(10_000);
+      gov.noteMeasured(reading);
+      gov.setRange({ min: 1, max: 5 });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(Math.max(...sent.map(s => s[1])), String(reading)).toBeLessThanOrEqual(4.5);
+      expect(gov.target, String(reading)).toBe(4.5);
+    }
   });
 
   it('a console Set Speed below a pending lowered limit drops it: two later readings above do not send the limit', async () => {
@@ -509,7 +537,7 @@ describe('SpeedGovernor', () => {
     expect(gov.base()).toBeLessThanOrEqual(8);
   });
 
-  it('a limit lowered while the treadmill still speeds up is applied at once (no step up beyond maxStep)', async () => {
+  it('a limit lowered while the treadmill still speeds up never makes the belt faster than the target (target 4.5 stays)', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });
     gov.noteMeasured(4);
@@ -520,7 +548,8 @@ describe('SpeedGovernor', () => {
     await vi.advanceTimersByTimeAsync(1000);
     gov.noteMeasured(6.5);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(sent.map(s => s[1])).toEqual([4.5, 5]);
+    expect(sent.map(s => s[1])).toEqual([4.5]);
+    expect(gov.target).toBe(4.5);
   });
 
   it('a lowered limit pending on one reading is dropped if the next one is not above it', async () => {

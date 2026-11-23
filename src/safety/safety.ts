@@ -259,6 +259,11 @@ export class SpeedGovernor {
     return kmh > this.range.max + EPS && kmh <= LIMIT_MAX && (!this.last || kmh > this.last.kmh + this.maxStep + EPS);
   }
 
+  /** What a lowered limit asks for: the target if it is below the limit (never faster than the user asked), else the limit */
+  private limitGoal(): number {
+    return this._target !== null ? Math.min(this._target, this.range.max) : this.range.max;
+  }
+
   setRange(range: SpeedRange) {
     this.range = { ...range };
     if (this._target !== null) {
@@ -271,11 +276,14 @@ export class SpeedGovernor {
     this.lowering = null;
     const m = this.measured;
     const above = m !== null && this.deps.now() - m.at < this.opts.freshMs && this.aboveLimit(m.kmh);
+    // The base is above the limit (confirmed, or the last command): planRamp clamps its first step to range.max, so the limit
+    // goes out in one command
     if ((this.last || this.measured) && this.heldBase() > range.max + EPS) this.request(range.max);
     // The belt may run above the new limit, not confirmed yet: the limit is sent at once if that is no step up of more than
     // maxStep from the last command (it can only slow the belt down); a bigger step up waits for two readings (limitPending).
     // So this branch may act on one reading: the command is within maxStep of the last command and below the belt.
-    else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(range.max);
+    // One reading may be wrong: it must not make the belt faster than the user's target (limitGoal), only slower or equal.
+    else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(this.limitGoal());
     else {
       this.limitPending = above;
       if (above) this.over = { first: m.at, last: m.at, kmh: m.kmh };
