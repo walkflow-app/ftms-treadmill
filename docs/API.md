@@ -485,7 +485,7 @@ function noticeText(n: Notice): string {
     case 'incline-range': return `Incline ${n.range.min}–${n.range.max} %`;
     case 'incline-range-unreadable': return 'Incline range could not be read';
     case 'heart-rate': return n.available ? 'Heart rate available' : 'No heart rate';
-    case 'write-dropped': return `Command dropped for a stop: ${n.bytes}`;
+    case 'write-dropped': return `Command dropped before it was sent: ${n.bytes}`;
     case 'write-failed': return `Command failed: ${typeof n.error === 'string' ? n.error : n.error.message}`;
     case 'no-allowed-speed': return `No speed allowed (${n.min}–${n.max} km/h)`;
     case 'speed-held-until-moving': return `${n.kmh} km/h once the belt moves`;
@@ -516,7 +516,7 @@ tm.on('notice', n => console.log(noticeText(n)));
 | `speed-range`, `incline-range` | `range` | the ranges it accepts |
 | `speed-range-unreadable`, `incline-range-unreadable` | | not readable; 1–12 km/h is assumed for the speed |
 | `heart-rate` | `available` | whether it offers heart rate |
-| `write-dropped` | `bytes` | a waiting command was dropped because a Stop or Pause went first |
+| `write-dropped` | `bytes` | a waiting command was dropped because a Stop or Pause went first, or the speed limit was lowered below it while it waited |
 | `write-failed` | `error`: a [`TreadmillErrorCode`](#treadmillerror) or `{ message }` | a command did not go through |
 | `no-allowed-speed` | `min`, `max` | the limit is below the treadmill's lowest speed: nothing can be sent |
 | `speed-held-until-moving` | `kmh` | the speed is held until the belt moves |
