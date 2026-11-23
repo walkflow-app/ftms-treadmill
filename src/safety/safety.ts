@@ -71,7 +71,7 @@ export function planRamp(from: number, to: number, maxStep: number, range: Speed
 export interface GovernorDeps {
   /**
    * Sends Set Speed. false = write error. `current`, for a ramp step: asked when the write's turn comes; false = the ramp
-   * was ended meanwhile (stop, reset), the step is not written.
+   * was ended meanwhile (stop, reset) or the step is above a limit lowered meanwhile; the step is not written.
    */
   send(kmh: number, current?: () => boolean): Promise<boolean>;
   now(): number;
