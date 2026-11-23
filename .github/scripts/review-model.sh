@@ -2,10 +2,11 @@
 # Chooses the model for an agent review of pull request $PR: another model than the one that wrote the change. Written with
 # Opus, Sonnet reviews, and the other way round; Haiku, Sonnet. The writer comes from the Co-Authored-By lines of the commits;
 # a branch claude/… was written by claude.yml with the action's default model (Sonnet). Unclear (no or several writers): Opus
-# for safety code, or more than 400 changed lines, else Sonnet.
+# for belt code (the list SAFETY in scripts/paths.mjs), or more than 400 changed lines, else Sonnet.
 # Writes model=… and why=… to $GITHUB_OUTPUT. Used by agent-review.yml and, for "@claude review", by claude.yml.
 set -eo pipefail
-COMPLEX='^src/(safety|protocol)/|^src/device/(treadmill|belt-commands|ble|reports|belt-state)\.ts$'
+# Belt code: the list of scripts/paths.mjs, the same one the safety gate and the pipeline read
+COMPLEX="$(node scripts/paths.mjs careful)"
 IGNORE='^package-lock\.json$'
 pr=$(gh pr view "$PR" --json headRefName,commits,files)
 writers=$( { jq -r '.commits[] | .messageHeadline + "\n" + .messageBody' <<<"$pr" |

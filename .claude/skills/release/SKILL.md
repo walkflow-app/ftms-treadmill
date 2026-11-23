@@ -18,9 +18,9 @@ gh pr view <n>
 Check the changelog against `git log v<last>..origin/main --oneline`. Is the version right? A changed promise
 (*What the library promises*) or a breaking API change must at least be a minor version.
 
-**Stop and ask before step 3** if the changelog has a *Safety* section or any change to what is sent to the treadmill
-(`src/device/treadmill.ts`, `src/device/belt-commands.ts`, `src/safety/`, `src/device/ble.ts`). Such a version is checked on
-a real treadmill first: try it in the app (`npm run build` here, `npm link ../ftms-treadmill` in walkflow), and name the
+**Stop before step 3** if the changelog has a *Safety* section or any change to the belt code (the list `SAFETY` in
+`scripts/paths.mjs`; `git fetch --tags && node scripts/release-gate.mjs origin/main <release PR>` says which pull requests still wait; `npm-publish.yml` runs it too and
+stops). Such a version is checked on a real treadmill once, bundled, before publishing: try it in the app (`npm run build` here, `npm link ../ftms-treadmill` in walkflow), and name the
 checks from walkflow's HARDWARE-TESTS.md (the `hardware-check` skill there). Wait until the maintainer says they passed.
 
 ## 2. Merge and check the draft

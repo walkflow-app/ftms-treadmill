@@ -18,8 +18,8 @@ the app first: `npm run build` here, `npm link ../ftms-treadmill` in the app.
 ## Rules
 
 - **The promises in docs/LIBRARY.md → *What the library promises* are the contract.** Each has a test. Code that decides what
-  is sent (`src/safety/`, `src/protocol/`, `src/device/treadmill.ts`, `belt-commands.ts`, `ble.ts`, `reports.ts`,
-  `belt-state.ts`) changes **test first**, and must not weaken a limit, a delay or a stop. Changing a promise is a `safety`
+  is sent (the list `SAFETY` in `scripts/paths.mjs`: `src/safety/`, `src/protocol/` and the belt files of `src/device/`,
+  not the simulator) changes **test first**, and must not weaken a limit, a delay or a stop. Changing a promise is a `safety`
   commit and at least a minor version.
 - **The API is a contract too.** Avoid options and names that would have to break later; when unsure, propose in an issue
   or a pull request description before building. Every public change goes into docs/API.md with an example
@@ -72,10 +72,12 @@ npm run example                                                  # drives the si
 - **A rule that does not fit:** follow the principles as far as you can, and write the rule with a proposed change under
   **Process notes** in your pull request or last comment. Never loosen a rule in your own run.
 
-**In this repository:** belt code is `src/device/`, `src/safety/` and `src/protocol/` (a change to a promise in docs/LIBRARY.md is a
-`safety` commit); the check on a treadmill comes before **publishing** to npm, once per release. The agent pipeline and the
-release gate of walkflow are not here yet: until they are, the PM or the maintainer merges, `claude.yml` skips issues labelled
-`safety`, and the maintainer publishes.
+**In this repository:** belt code is the list `SAFETY` in `scripts/paths.mjs` (one list: the safety gate, the pipeline, the release
+gate and `review-model.sh` read it; a change to a promise in docs/LIBRARY.md is a `safety` commit). The check on a treadmill comes
+before **publishing** to npm, once per release: `npm-publish.yml` stops until every pull request with belt code since the last
+release has a `/hardware-ok` from the maintainer, or one is on the release pull request (`scripts/release-gate.mjs`). The agent
+pipeline merges like in walkflow once the repository variable `AGENT_PIPELINE` is `on` (the maintainer's setting), and only the
+maintainer publishes.
 
 - **New API or behaviour starts as a spec** (skill `write-spec`, in `docs/specs/`); code starts once the maintainer approved the
   Feature issue (a comment `approved`; it carries the spec), or set a spec without a Feature issue to `accepted`.
@@ -84,11 +86,13 @@ release gate of walkflow are not here yet: until they are, the PM or the maintai
   Reviewers run with another model than the one that wrote the change: written with Opus, the reviewer runs with Sonnet, and
   the other way round; when that is unclear, Opus for safety code or big changes, else Sonnet. On GitHub
   `.github/scripts/review-model.sh` picks it the same way, from the Co-Authored-By lines of the commits.
-- **"release"**: skill `release` (stops before publishing safety changes; brings the new version into the app afterwards).
+- **"release"**: skill `release` (stops before publishing until the treadmill checks are confirmed; brings the new version into the app afterwards).
 - **On GitHub:** `agent-review.yml` runs the reviewers on every new pull request and posts their verdicts (comment
-  `@claude review` to run it again); `claude.yml` takes on `@claude …` requests and issues labelled `agent-ready`, never ones
-  labelled `safety` (until this repository has an agent pipeline and a release gate). Both only work on branches and pull
-  requests; the PM or the maintainer merges. Scheduled: `docs-check.yml` (monthly,
+  `@claude review` to run it again); `claude.yml` takes on `@claude …` requests and issues labelled `agent-ready`, belt code
+  included (test first, two reviews). Both only work on branches and pull requests; with `AGENT_PIPELINE` on, `agent-pipeline.yml`
+  (every 15 minutes and after each review, CI or fix) merges what is reviewed, green and up to date, `agent-fix.yml` fixes remarks,
+  failing checks and conflicts, and `dispatch.yml` starts the tasks of an approved Feature. Only the rules themselves
+  (`needs-maintainer`) wait for the maintainer, everything else stuck gets `stuck` for the PM. Until then the PM or the maintainer merges. Scheduled: `docs-check.yml` (monthly,
   an issue "Docs out of date"). New issues from
   outside: `triage.yml` (labels and one comment, never `agent-ready`).
 
