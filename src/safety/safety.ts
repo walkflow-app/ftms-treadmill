@@ -167,7 +167,7 @@ export class SpeedGovernor {
     // These readings only serve the lowered limit (a command down); they are never `confirmed`, the base of a step up.
     let overConfirmed = false;
     if (this.limitPending) {
-      if (kmh <= this.range.max + EPS) this.over = null;
+      if (!this.aboveLimit(kmh)) this.over = null;
       else if (!this.over || at - this.over.last > this.opts.freshMs) this.over = { first: at, last: at };
       else {
         this.over.last = at;
@@ -179,7 +179,7 @@ export class SpeedGovernor {
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
     if ((confirmedNow || overConfirmed) && this.limitPending) {
-      if (kmh <= this.range.max + EPS) this.limitPending = false;
+      if (!this.aboveLimit(kmh)) this.limitPending = false;
       else if (overConfirmed || this.base() > this.range.max + EPS) {
         this.limitPending = false;
         this.lowering = clampSpeed(this.range.max, this.range);
@@ -213,6 +213,14 @@ export class SpeedGovernor {
     return l.kmh;
   }
 
+  /**
+   * A plausible reading shows the belt above the limit only if it is also more than maxStep away from the last command (the
+   * rule of base()): a belt that follows the last command and reads a little above the limit needs no command down.
+   */
+  private aboveLimit(kmh: number): boolean {
+    return kmh > this.range.max + EPS && kmh <= LIMIT_MAX && (!this.last || kmh > this.last.kmh + this.maxStep + EPS);
+  }
+
   setRange(range: SpeedRange) {
     this.range = { ...range };
     if (this._target !== null) {
@@ -224,7 +232,7 @@ export class SpeedGovernor {
     this.over = null;
     this.lowering = null;
     const m = this.measured;
-    const above = m !== null && this.deps.now() - m.at < this.opts.freshMs && m.kmh > range.max + EPS && m.kmh <= LIMIT_MAX;
+    const above = m !== null && this.deps.now() - m.at < this.opts.freshMs && this.aboveLimit(m.kmh);
     if ((this.last || this.measured) && this.base() > range.max + EPS) this.request(range.max);
     // The belt may run above the new limit, not confirmed yet: the limit is sent at once if that is no step up of more than
     // maxStep from the last command (it can only slow the belt down); a bigger step up waits for two readings (limitPending)

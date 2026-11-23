@@ -485,6 +485,36 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([5]);
   });
 
+  it('a reading a little above the limit while the belt follows the last command lowers nothing (no step up, target kept)', async () => {
+    const { gov, sent } = make();
+    gov.noteMeasured(5.3);
+    gov.request(5.8);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sent.map(s => s[1])).toEqual([5.8]);
+    gov.noteMeasured(6.1); // within maxStep of the last command: the belt follows it
+    gov.setRange({ min: 1, max: 6 }); // the same limit again (e.g. a new maxStep)
+    await vi.advanceTimersByTimeAsync(1000);
+    gov.noteMeasured(6.1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.map(s => s[1])).toEqual([5.8]);
+    expect(gov.target).toBe(5.8); // unchanged: the device layer reports limit-lowered only when the target changes
+  });
+
+  it('a lowered limit waiting for a second reading still brings the belt down after commandRefused', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(8);
+    gov.noteExternalCommand(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(8);
+    gov.setRange({ min: 1, max: 5 }); // 1 → 5 is a step up: waits for a second reading
+    gov.commandRefused();
+    await vi.advanceTimersByTimeAsync(1000);
+    gov.noteMeasured(8); // the belt is shown above the limit: it is commanded down to it
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.map(s => s[1])).toEqual([5]);
+  });
+
   it('two agreeing readings far apart in time (the treadmill was silent) confirm nothing', async () => {
     const { gov, sent } = make();
     gov.noteExternalCommand(2);
