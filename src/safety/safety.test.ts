@@ -341,6 +341,24 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([4.5, 5]);
   });
 
+  it('a console Set Speed below a pending lowered limit drops it: two later readings above do not send the limit', async () => {
+    const { gov, sent } = make();
+    gov.maxStep = 0.1;
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(4);
+    gov.request(4.1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(8);
+    gov.setRange({ min: 1, max: 5 }); // pending: 4.1 is more than maxStep below 5
+    gov.noteExternalCommand(4); // the console brings the belt below the limit
+    await vi.advanceTimersByTimeAsync(1000);
+    gov.noteMeasured(8);
+    await vi.advanceTimersByTimeAsync(1100);
+    gov.noteMeasured(8);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sent.map(s => s[1])).toEqual([4.1]);
+  });
+
   it('a stale confirmation is not the base: the belt was raised and lowered again on the console', async () => {
     const { gov, sent } = make();
     gov.setRange({ min: 1, max: 10 });

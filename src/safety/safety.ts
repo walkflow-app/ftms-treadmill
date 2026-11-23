@@ -144,6 +144,19 @@ export class SpeedGovernor {
     return this.last ? this.deps.now() - this.last.at : Number.POSITIVE_INFINITY;
   }
 
+  /*
+   * State of noteMeasured/setRange (what sets it, what clears it):
+   * - anchor: first reading of a possible confirmation. Set by a plausible reading that does not agree with it; cleared by an
+   *   implausible reading and reset().
+   * - confirmed: the lower of two readings that agree, at least CONFIRM_MS apart: the only base above the last command.
+   *   Cleared by a plausible reading more than maxStep away from it, and reset().
+   * - limitPending: the limit was lowered below a belt that may run above it, not confirmed. Set by setRange; cleared by
+   *   setRange, noteExternalCommand, reset(), and when the lowered limit is sent or a reading is not above the limit.
+   * - over: the readings above a pending limit (first, last, value), two that agree within maxStep confirm it. Cleared with
+   *   limitPending, and by a reading not above the limit.
+   * - lowering: the limit to be sent in one command, once the belt is shown above it. Cleared by a reading at or below it,
+   *   cancel(), reset(), setRange() and when the command was planned.
+   */
   noteMeasured(kmh: number, at = this.deps.now()) {
     this.measured = { kmh, at };
     if (!Number.isFinite(kmh) || kmh < 0 || kmh > LIMIT_MAX) {
@@ -182,9 +195,11 @@ export class SpeedGovernor {
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
     if ((confirmedNow || overConfirmed) && this.limitPending) {
       if (!this.aboveLimit(kmh)) this.limitPending = false;
-      else if (overConfirmed || this.heldBase() >this.range.max + EPS) {
+      else if (overConfirmed || this.heldBase() > this.range.max + EPS) {
         this.limitPending = false;
         this.lowering = clampSpeed(this.range.max, this.range);
+        // This command can be more than maxStep above the last command, but it is a command down for a belt confirmed above
+        // the limit, so it falls under the exception of promise 2
         this.request(this.range.max);
       }
     }
@@ -193,6 +208,9 @@ export class SpeedGovernor {
   /** Speed command sent from outside (console): ends the ramp and counts for the minimum interval. */
   noteExternalCommand(kmh: number) {
     this.cancel();
+    // The console already set a speed: a pending lowered limit must not override it later with a step up
+    this.limitPending = false;
+    this.over = null;
     this.last = { kmh, at: this.deps.now() };
   }
 
