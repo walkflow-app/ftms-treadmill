@@ -26,5 +26,9 @@ For each promise the diff touches, answer:
 5. **Hardware.** What only a treadmill can show: name the checks with expected log lines and bytes for walkflow's
    HARDWARE-TESTS.md.
 
-Report: one line first (**OK**, **OK with remarks**, **Blocking**), then the findings, most serious first, with file and line,
+Report: one line first, the verdict, then the findings, most serious first, with file and line,
 what can happen on the belt, and the fix. Say what you could not check.
+
+**The verdict** is one of `OK`, `OK with remarks`, `changes needed`, `blocking`. `blocking` is only for a real defect (wrong
+behaviour, a weakened promise, limit, delay or stop, a broken principle of CLAUDE.md); the PM looks at it. A missing test or a
+wrong detail is `changes needed`, a preference or a nit is a remark and never blocks. The weight of a remark is the weight of the risk.

@@ -2,8 +2,9 @@ name: Claude
 
 # Claude on request: "@claude …" in an issue, a pull request or a review comment (from someone with write access), or the
 # label `agent-ready` on an issue. It works by CLAUDE.md, on a branch claude/…, and opens a pull request; `main` takes
-# changes only through pull requests, so nothing reaches it without a merge by a maintainer. Issues labelled `safety` are
-# never taken on: safety changes are made with the maintainer.
+# changes only through pull requests, so nothing reaches it without a merge. Issues labelled `safety` are
+# not taken on until this repository has an agent pipeline and a release gate (meta process/flow.md); then belt code is built
+# like any other issue, test first, with the safety reviewer.
 # Needs the secret CLAUDE_CODE_OAUTH_TOKEN (claude setup-token).
 on:
   issue_comment:
