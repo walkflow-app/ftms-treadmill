@@ -13,7 +13,30 @@ permissions:
   contents: read
 
 jobs:
+  # Agents may merge changes that reach the belt; nothing is published before the maintainer confirmed their treadmill checks
+  # (scripts/release-gate.mjs: a comment "/hardware-ok" on each such pull request, or once on the release pull request, after the
+  # last of them was merged)
+  hardware:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Treadmill checks confirmed for every change that reaches the belt?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/release-gate.mjs "$TAG"
+
   publish:
+    needs: hardware
     runs-on: ubuntu-latest
     permissions:
       contents: read

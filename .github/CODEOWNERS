@@ -6,6 +6,11 @@
 src/device/treadmill.ts         @caenderl
 src/device/belt-commands.ts     @caenderl
 src/safety/                     @caenderl
+src/protocol/                   @caenderl
+src/device/ble.ts               @caenderl
+src/device/reports.ts           @caenderl
+src/device/belt-state.ts        @caenderl
+src/device/web-bluetooth.ts     @caenderl
 docs/LIBRARY.md                 @caenderl
 .github/                        @caenderl
 CLAUDE.md                       @caenderl

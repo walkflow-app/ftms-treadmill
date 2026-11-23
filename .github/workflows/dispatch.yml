@@ -1,0 +1,34 @@
+name: Dispatch
+
+# Starts the tasks of features (the feature flow of the planning repository): every open issue here that is a sub-issue of an approved
+# Feature issue, with all its blockers closed and none of the labels needs-maintainer, stuck or hold
+# (scripts/feature-gate.mjs). It sets `agent-ready` as a marker and starts claude.yml with the issue number: a label set
+# with the workflow token starts no workflow. At most three tasks per run. Runs when an issue closes (a blocker may be
+# gone), every hour (a blocker in another repository), and by hand.
+on:
+  issues:
+    types: [closed]
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write # the marker agent-ready
+  actions: write # only to start claude.yml (workflow_dispatch)
+
+concurrency:
+  group: dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/feature-gate.mjs dispatch

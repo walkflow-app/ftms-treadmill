@@ -5,9 +5,9 @@
 //   node scripts/safety-gate.mjs <base ref> "<pull request title>"
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { SAFETY } from './paths.mjs';
 
-// Code that decides what is sent to the belt, and the promises of docs/LIBRARY.md
-const SAFETY = [/^src\/safety\//, /^src\/protocol\//, /^src\/device\/(treadmill|belt-commands|ble|reports|belt-state)\.ts$/];
+// Belt code: the list SAFETY in scripts/paths.mjs
 const TEST = /\.test\.ts$/;
 
 export function checkSafetyGate({ files, title }) {

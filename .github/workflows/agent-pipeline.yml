@@ -1,0 +1,51 @@
+name: Agent pipeline
+
+# Decides, for every open pull request, what happens next (meta spec 0002, CONTRIBUTING.md → Agents on GitHub): merge it,
+# start a fix (agent-fix.yml), bring a safety change up to date with main, or park it: with the label `stuck` (the PM looks) or, for the rules
+# themselves, `needs-maintainer` (the maintainer). The rules are in scripts/agent-pipeline.mjs and its tests. No agent runs here.
+# Runs from main only (workflow_run and schedule always use the files of main), after a review, CI or a fix finished, and
+# every 15 minutes for whatever was missed. Off unless the repository variable AGENT_PIPELINE is "on".
+# Needs WRITER_APP_ID (variable) and WRITER_APP_KEY (secret): merges and labels by the app start the workflows that follow.
+on:
+  workflow_run:
+    workflows: [CI, Agent review, Agent fix]
+    types: [completed]
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  checks: read
+  actions: write # only to start agent-fix.yml (workflow_dispatch)
+
+concurrency:
+  group: agent-pipeline
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    if: vars.AGENT_PIPELINE == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ vars.WRITER_APP_ID }}
+          private-key: ${{ secrets.WRITER_APP_KEY }}
+      - name: Decide and act
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WRITER_TOKEN: ${{ steps.app.outputs.token }}
+          AGENT_PIPELINE: ${{ vars.AGENT_PIPELINE }}
+        run: node scripts/agent-pipeline.mjs sweep
