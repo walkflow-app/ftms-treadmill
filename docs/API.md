@@ -229,7 +229,8 @@ spurious 0.0 does not count) or a new run begins (`start()`, a raw Start, a Mach
 was below 0.1 km/h: a late `started` while the belt still reports a speed, or before any reading since the stop, does not
 count), and a moving belt after that. A treadmill
 that reports no standing belt and no `started` keeps the speed held until a new run begins or the next connection: nothing
-is sent then, and `speed-held-until-moving` says so. A stop drops the speed asked for.
+is sent then, and `speed-held-until-moving` says so. A stop clears `state.target`; the speed asked for last is ramped to
+again after `start()` ([promise 3](LIBRARY.md#what-the-library-promises)).
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).
