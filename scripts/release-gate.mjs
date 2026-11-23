@@ -2,7 +2,7 @@
 // has checked them on a treadmill. Every pull request merged since the last release that touches a safety path (see agent-pipeline.mjs), or has the label needs-hardware, needs a comment that is only the line
 // "/hardware-ok", written after its merge by an owner named in .github/CODEOWNERS; or one such comment on the release pull
 // request, written after the last of them was merged, for all. Run by the release skill before the release pull request is
-// merged, and by release.yml before anything is built.
+// merged, and by npm-publish.yml before anything is published (a failed run is run again after the comment).
 //
 //   node scripts/release-gate.mjs <ref> [<release pull request>]
 import { execFileSync } from 'node:child_process';

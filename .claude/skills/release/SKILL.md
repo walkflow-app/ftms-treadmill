@@ -21,7 +21,7 @@ Check the changelog against `git log v<last>..origin/main --oneline`. Is the ver
 **Stop before step 3** if the changelog has a *Safety* section or any change to the belt code (the list `SAFETY` in
 `scripts/paths.mjs`; `git fetch --tags && node scripts/release-gate.mjs origin/main <release PR>` says which pull requests still wait; `npm-publish.yml` runs it too and
 stops). Such a version is checked on a real treadmill once, bundled, before publishing: try it in the app (`npm run build` here, `npm link ../ftms-treadmill` in walkflow), and name the
-checks from walkflow's HARDWARE-TESTS.md (the `hardware-check` skill there). Wait until the maintainer says they passed.
+checks from walkflow's HARDWARE-TESTS.md (the `hardware-check` skill there). Wait until the maintainer says they passed. If `npm-publish.yml` stops on the gate after the draft was published, the release shows as published but npm has nothing: the maintainer comments `/hardware-ok` and re-runs the failed job.
 
 ## 2. Merge and check the draft
 

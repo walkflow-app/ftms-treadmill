@@ -9,7 +9,8 @@ export const SAFETY = [/^src\/safety\//, /^src\/protocol\//, /^src\/device\/(tre
 export const TRUST = [];
 
 /** The same lists for a shell: `node scripts/paths.mjs safety|trust|careful` prints one extended regular expression. */
-export const asRegExp = list => list.map(p => p.source.replaceAll('\\/', '/')).join('|');
+// An empty list prints a pattern that matches nothing (an empty one would match every line of a grep)
+export const asRegExp = list => (list.length ? list.map(p => p.source.replaceAll('\\/', '/')).join('|') : '$^');
 
 import { pathToFileURL } from 'node:url';
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
