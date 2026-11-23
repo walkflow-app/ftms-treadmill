@@ -381,7 +381,7 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([5.5]); // from 5.0 plus one step, not from 5.5 (6.0)
   });
 
-  it('readings above a lowered limit that jitter by more than maxStep lower the limit but are not a confirmed speed (no base for a step up)', async () => {
+  it('two readings above a lowered limit that agree within maxStep lower the limit but are not a base for a step up', async () => {
     const { gov, sent } = make();
     gov.maxStep = 0.1;
     gov.setRange({ min: 1, max: 10 });
@@ -391,18 +391,26 @@ describe('SpeedGovernor', () => {
     gov.noteMeasured(7.8);
     gov.setRange({ min: 1, max: 5 });
     await vi.advanceTimersByTimeAsync(1000);
-    gov.noteMeasured(8.2); // lowered limit confirmed: 5 is sent
+    gov.noteMeasured(7.85); // agree: the lowered limit 5 is sent
     await vi.advanceTimersByTimeAsync(0);
     expect(sent.map(s => s[1])).toEqual([4.1, 5]);
-    gov.setRange({ min: 1, max: 10 }); // limit up again, belt readings forgotten as a base
-    await vi.advanceTimersByTimeAsync(5000);
-    gov.noteMeasured(5);
-    gov.request(9);
-    await vi.advanceTimersByTimeAsync(1600);
-    expect(sent.map(s => s[1])[2]).toBeLessThanOrEqual(5.1 + 1e-9);
   });
 
-  it('a limit lowered below a belt that jitters by more than maxStep (maxStep 0.1) is applied after two readings 1 s apart', async () => {
+  it('two readings above a lowered limit that do not agree within maxStep (7.0 and 19.9) send nothing', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(2);
+    gov.request(2.5);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(7);
+    gov.setRange({ min: 1, max: 5 }); // 2.5 → 5 is a step up: waits
+    await vi.advanceTimersByTimeAsync(1000);
+    gov.noteMeasured(19.9);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.map(s => s[1])).toEqual([2.5]);
+  });
+
+  it('a limit lowered below a belt that jitters by more than maxStep (maxStep 0.1) sends nothing beyond one step', async () => {
     const { gov, sent } = make();
     gov.maxStep = 0.1;
     gov.setRange({ min: 1, max: 10 });
@@ -414,7 +422,31 @@ describe('SpeedGovernor', () => {
     await vi.advanceTimersByTimeAsync(1000);
     gov.noteMeasured(8.2);
     await vi.advanceTimersByTimeAsync(5000);
-    expect(sent.map(s => s[1])).toEqual([4.1, 5]);
+    expect(sent.map(s => s[1])).toEqual([4.1]);
+  });
+
+  it('a belt slowed on the console: one reading lowers the base at once (last 8, reading 3, request 9: at most 3.5)', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(8);
+    await vi.advanceTimersByTimeAsync(7000);
+    gov.noteMeasured(3);
+    expect(gov.base()).toBe(3);
+    gov.request(9);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map(s => s[1])).toEqual([3.5]);
+  });
+
+  it('a belt slowed on the console: the console check starts from the lower reading too', async () => {
+    const { gov } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteExternalCommand(8);
+    await vi.advanceTimersByTimeAsync(7000);
+    gov.noteMeasured(3);
+    expect(gov.base()).toBe(3); // checkConsoleCommand gets this as baseKmh
+    gov.noteMeasured(655.35); // not a speed: the base stays the last command or the last good reading's age
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gov.base()).toBeLessThanOrEqual(8);
   });
 
   it('a limit lowered while the treadmill still speeds up is applied at once (no step up beyond maxStep)', async () => {
@@ -655,6 +687,9 @@ describe('SpeedGovernor', () => {
         await vi.advanceTimersByTimeAsync(10_000);
         // nothing sent at all (belt not moving) is fine too
         expect(sent[0]?.[1] ?? 2, `${maxStep} ${r}`).toBeLessThanOrEqual(2 + maxStep + 1e-9);
+        // and never more than maxStep above the slower of the last command and a plausible reading
+        const plausible = Number.isFinite(r) && r >= 0 && r <= 655.35;
+        if (plausible && sent.length) expect(sent[0]![1], `min ${maxStep} ${r}`).toBeLessThanOrEqual(Math.max(1, Math.min(2, r) + maxStep) + 1e-9);
       }
     }
   });
