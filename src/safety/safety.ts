@@ -395,7 +395,8 @@ export class SpeedGovernor {
       if (ok && this.last === mine) mine.at = this.deps.now();
       // The belt never got this speed: the next ramp starts from the one it got before
       if (!ok && this.last === mine) this.last = before;
-      // Withdrawn for the lowered limit, not failed: the ramp goes on, planned again against the new limit
+      // Withdrawn for the lowered limit, not failed: the ramp goes on, planned again against the new limit. If the speed
+      // the belt got before already is the target, pump() sends nothing, which is right: the belt has that speed
       if (gen === this.gen && !ok && withdrawn) {
         this.pump();
         this.deps.onChange?.();

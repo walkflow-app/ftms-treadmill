@@ -187,6 +187,25 @@ describe('the speed limit (promise 1)', () => {
     expect(dev.writes).toEqual(['03 14 00']);
   });
 
+  it('a ramp step waiting in the queue is withdrawn when the limit is lowered below it, and the lowered limit goes out instead (#34)', async () => {
+    const { tm, dev, notices } = await rig();
+    dev.speed(4);
+    let release!: () => void;
+    dev.writeImpl = () => new Promise(r => { release = r; });
+    void tm.setIncline(2); // holds the queue
+    tm.setSpeed(5.5); // the step 4.5 (02 c2 01) waits behind it
+    await new Promise(r => setTimeout(r, 0));
+    tm.setLimits({ speedLimit: 4 }); // the limit is lowered while the step waits
+    dev.writeImpl = async () => {};
+    release();
+    await vi.waitFor(() => expect(dev.writes).toContain('02 90 01'));
+    await new Promise(r => setTimeout(r, 10));
+    expect(dev.writes).toEqual(['03 14 00', '02 90 01']);
+    expect(notices).toContainEqual({ code: 'write-dropped', bytes: '02 c2 01' });
+    expect(notices).not.toContainEqual({ code: 'ramp-aborted' });
+    expect(tm.state.target).toBe(4);
+  });
+
   it('a stop reported while a start waits in the queue does not withdraw the start (#28 F)', async () => {
     const { tm, dev } = await rig();
     let release!: () => void;

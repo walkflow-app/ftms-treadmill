@@ -485,7 +485,7 @@ function noticeText(n: Notice): string {
     case 'incline-range': return `Incline ${n.range.min}–${n.range.max} %`;
     case 'incline-range-unreadable': return 'Incline range could not be read';
     case 'heart-rate': return n.available ? 'Heart rate available' : 'No heart rate';
-    case 'write-dropped': return `Command dropped for a stop: ${n.bytes}`;
+    case 'write-dropped': return `Command dropped before it was sent: ${n.bytes}`;
     case 'write-failed': return `Command failed: ${typeof n.error === 'string' ? n.error : n.error.message}`;
     case 'no-allowed-speed': return `No speed allowed (${n.min}–${n.max} km/h)`;
     case 'speed-held-until-moving': return `${n.kmh} km/h once the belt moves`;
