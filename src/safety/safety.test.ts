@@ -447,6 +447,44 @@ describe('SpeedGovernor', () => {
     expect(sent.map(s => s[1])).toEqual([4.5, 5]); // sent at once on the first reading; the later ones change nothing
   });
 
+  it('a lowered limit waiting for the interval is no longer sent in one command once the belt runs at or below it', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(8);
+    gov.noteExternalCommand(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(8);
+    gov.setRange({ min: 1, max: 5 }); // 1 → 5 is a step up: waits for a second reading
+    await vi.advanceTimersByTimeAsync(500);
+    gov.noteExternalCommand(1); // a command on the console: the next one waits for the interval
+    await vi.advanceTimersByTimeAsync(500);
+    gov.noteMeasured(8); // the belt is shown above the limit: 5 is planned in one command, after the interval
+    await vi.advanceTimersByTimeAsync(300);
+    gov.noteMeasured(3); // slowed on the console before it is sent
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent[0]![1]).toBeLessThanOrEqual(1 + 0.5 + 1e-9);
+    expect(Math.max(...sent.map(s => s[1]))).toBeLessThanOrEqual(5);
+  });
+
+  it('a lowered limit waiting for the interval is still sent in one command while the belt stays above it', async () => {
+    const { gov, sent } = make();
+    gov.setRange({ min: 1, max: 10 });
+    gov.noteMeasured(8);
+    gov.noteExternalCommand(1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    gov.noteMeasured(8);
+    gov.setRange({ min: 1, max: 5 });
+    await vi.advanceTimersByTimeAsync(500);
+    gov.noteExternalCommand(1);
+    await vi.advanceTimersByTimeAsync(500);
+    gov.noteMeasured(8);
+    await vi.advanceTimersByTimeAsync(300);
+    gov.noteMeasured(7.9); // still above the limit
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(sent.map(s => s[1])).toEqual([5]);
+  });
+
   it('two agreeing readings far apart in time (the treadmill was silent) confirm nothing', async () => {
     const { gov, sent } = make();
     gov.noteExternalCommand(2);

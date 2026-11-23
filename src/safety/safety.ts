@@ -152,7 +152,11 @@ export class SpeedGovernor {
     }
     // A newer reading that is somewhere else than what was confirmed: the belt has moved on, the confirmation is stale
     if (this.confirmed && Math.abs(kmh - this.confirmed.kmh) > this.maxStep + EPS) this.confirmed = null;
+    // The lowered limit in one command is only a command down while the belt runs above it; once it does not, the limit is
+    // approached in steps like any target
+    if (this.lowering !== null && kmh <= this.lowering + EPS) this.lowering = null;
     let confirmedNow = false;
+    // The anchor stays where a confirmation started: a belt that drifts more than maxStep away from it starts a new anchor
     if (this.anchor && Math.abs(kmh - this.anchor.kmh) <= this.maxStep + EPS && at - this.anchor.at <= this.opts.freshMs) {
       // The lower of the two agreeing readings: one outlier up to maxStep above the other must not become the base
       if (at - this.anchor.at >= CONFIRM_MS) { this.confirmed = { kmh: Math.min(kmh, this.anchor.kmh), at }; confirmedNow = true; }
@@ -227,7 +231,7 @@ export class SpeedGovernor {
     else if (above && this.last && this.last.kmh + this.maxStep + EPS >= range.max) this.request(range.max);
     else {
       this.limitPending = above;
-      if (above && m) this.over = { first: m.at, last: m.at };
+      if (above) this.over = { first: m.at, last: m.at };
       this.pump();
     }
   }
