@@ -829,6 +829,51 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(tm.state.target).toBe(5);
   });
 
+  it('a raw Start whose write fails during the coast-down does not end the wait: 3.5, raw Start fails, 2.5, 2, 1.5', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    dev.writeImpl = async d => { if (d[0] === 0x07) throw new Error('GATT busy'); };
+    expect(await tm.sendRaw([0x07], { confirmed: true })).toEqual({ action: 'sent', ok: false });
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    tm.setSpeed(5);
+    for (const kmh of [2.5, 2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a raw Start that went out during the coast-down is a new run: the held speed is ramped once the belt moves', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    expect(await tm.sendRaw([0x07], { confirmed: true })).toEqual({ action: 'sent', ok: true });
+    tm.setSpeed(5);
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).not.toEqual([]);
+  });
+
+  it('a lowered limit is not sent while the hold is stuck on a running belt; stop() and start() are the way out', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setLimits({ speedLimit: 6 });
+    dev.speed(0); // one 0.0, then the treadmill is quiet and is restarted on its own console without a "started"
+    clock += 10_000;
+    for (const kmh of [4, 4, 4]) { dev.speed(kmh); clock += 1500; }
+    tm.setLimits({ speedLimit: 3 });
+    for (const kmh of [4, 4]) { dev.speed(kmh); clock += 1500; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]); // documented in docs/API.md (setSpeed, setLimits): nothing is sent during the hold
+    await tm.stop();
+    for (const kmh of [2, 0]) { dev.speed(kmh); clock += 1000; }
+    dev.speed(0); // standing confirmed: the wait ends
+    clock += 6000;
+    dev.writes = [];
+    expect(await tm.start()).toBe(true);
+    expect(setSpeeds(dev)).toEqual(['02 64 00']);
+  });
+
   it('a late Machine Status started while the belt still coasts down does not end the wait', async () => {
     const { tm, dev } = await coasting('stop');
     dev.speed(3.5);

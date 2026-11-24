@@ -454,10 +454,11 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
     const data = new Uint8Array(bytes);
     if (check.action === 'confirm-start') {
       if (!o.confirmed) return { action: 'needs-confirmation' };
-      governor.reset();
+      // Like start(): the wait after a stop (the belt may still coast down) ends only once the Start went out (#25)
+      governor.reset(governor.afterStop);
       newRun();
       const ok = await c.send(data);
-      if (ok) session.beltStarted = true;
+      if (ok) { session.beltStarted = true; governor.newRun(); }
       return { action: 'sent', ok };
     }
     if (bytes[0] === OP.STOP_PAUSE && (bytes[1] === 0x01 || bytes[1] === 0x02)) {

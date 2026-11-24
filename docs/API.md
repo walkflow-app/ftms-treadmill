@@ -230,7 +230,7 @@ also not a lowered limit (`setLimits`; the target still comes down, and the stop
 
 - **The wait ends** when the belt was seen standing: readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above
   in between. One spurious 0.0 does not count.
-- **Or** when a new run begins: `start()` once its Start went out (a `start()` that fails keeps the wait), a raw Start, or a Machine Status `started` that comes once the belt was seen
+- **Or** when a new run begins: `start()` once its Start went out (a `start()` that fails keeps the wait), a raw Start once it went out, or a Machine Status `started` that comes once the belt was seen
   standing for 1 s. A `started` while the belt still reports a speed, right after a single 0.0, or before any reading
   since the stop, does not count.
 - **After that** the speed asked for after the stop (with `setSpeed` during the coast-down) is ramped to as soon as the
