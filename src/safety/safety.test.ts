@@ -228,12 +228,39 @@ describe('SpeedGovernor', () => {
       expect(sent).toEqual([]);
     });
 
-    it('a Machine Status started after a reading of a standing belt is a new run', async () => {
+    it('a Machine Status started right after one spurious 0.0 does not end the wait (#49)', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [3.5, 0]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(300); }
+      gov.startedReported();
+      for (const kmh of [2.5, 2, 1.5]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(2000); }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+    });
+
+    it('a Machine Status started once the belt was seen standing for CONFIRM_MS is a new run', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(2);
       gov.noteMeasured(3);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(1000); // the treadmill reports nothing more while it stands
+      gov.startedReported();
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent.length).toBe(1);
+    });
+
+    it('a belt seen standing twice, then started, ramps when it moves', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(2);
+      gov.noteMeasured(0);
+      await vi.advanceTimersByTimeAsync(1000);
       gov.noteMeasured(0);
       gov.startedReported();
       gov.noteMeasured(1);

@@ -222,15 +222,21 @@ Sets the speed to go to. Returns the target it will actually ramp to (inside the
 
 How it gets there: in steps of at most `maxStep`, one command at most every `RAMP_INTERVAL_MS` (1.5 s), only while the
 belt moves. Before Start, or while the belt still stands, the speed is held (`speed-held-until-moving`) and ramped to
-once it moves. After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a
-standstill end) the belt coasts down while it still reports speeds above 0: nothing is sent then either. The speed asked
-for is held until the belt was seen standing (readings below 0.1 km/h at least 1 s apart, none above in between, so one
-spurious 0.0 does not count) or a new run begins (`start()`, a raw Start, a Machine Status `started` when the last reading
-was below 0.1 km/h: a late `started` while the belt still reports a speed, or before any reading since the stop, does not
-count), and a moving belt after that. A treadmill
-that reports no standing belt and no `started` keeps the speed held until a new run begins or the next connection: nothing
-is sent then, and `speed-held-until-moving` says so. A stop clears `state.target`; the speed asked for last is ramped to
-again after `start()` ([promise 3](LIBRARY.md#what-the-library-promises)).
+once it moves.
+
+After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
+end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`):
+
+- **The wait ends** when the belt was seen standing: readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above
+  in between. One spurious 0.0 does not count.
+- **Or** when a new run begins: `start()`, a raw Start, or a Machine Status `started` that comes once the belt was seen
+  standing for 1 s. A `started` while the belt still reports a speed, right after a single 0.0, or before any reading
+  since the stop, does not count.
+- **After that** the held speed is ramped to as soon as the belt moves.
+- A treadmill that reports no standing belt and no confirmed `started` keeps the speed held until a new run begins or
+  the next connection: nothing is sent meanwhile.
+- A stop clears `state.target`; the speed asked for last is ramped to again after `start()`
+  ([promise 3](LIBRARY.md#what-the-library-promises)).
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).

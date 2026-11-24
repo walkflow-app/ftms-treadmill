@@ -369,14 +369,14 @@ export class SpeedGovernor {
   }
 
   /**
-   * The treadmill reports Machine Status "started". While the belt coasts down after a stop this is a new run only if the
-   * last reading since the stop showed a standing belt (below STANDING_KMH): a late or mistaken "started" while the belt
-   * still reports a speed, or before anything was measured, does not end the wait (#25, one spurious 0.0: #49).
+   * The treadmill reports Machine Status "started". While the belt coasts down after a stop this is a new run only once
+   * standing is confirmed (readings below STANDING_KMH, the first at least CONFIRM_MS ago, none above since): a late or
+   * mistaken "started" while the belt still reports a speed, after one spurious 0.0 (#49), or before anything was measured
+   * does not end the wait (#25). A treadmill that goes silent at a standstill is confirmed by the time since its last 0.
    */
   startedReported() {
     if (!this.coasting) return;
-    const m = this.measured;
-    if (m !== null && m.kmh >= 0 && m.kmh < STANDING_KMH) this.newRun();
+    if (this.standingSince !== null && this.deps.now() - this.standingSince >= CONFIRM_MS) this.newRun();
   }
 
   /**
