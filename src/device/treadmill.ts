@@ -457,8 +457,13 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       // Like start(): the wait after a stop (the belt may still coast down) ends only once the Start went out (#25)
       governor.reset(governor.afterStop);
       newRun();
+      const mine = belt.epoch();
       const ok = await c.send(data);
-      if (ok) { session.beltStarted = true; governor.newRun(); }
+      if (ok) {
+        session.beltStarted = true;
+        // A stop or pause that came in while the Start was on its way keeps the wait: the belt coasts down (#25)
+        if (belt.epoch() === mine) governor.newRun();
+      }
       return { action: 'sent', ok };
     }
     if (bytes[0] === OP.STOP_PAUSE && (bytes[1] === 0x01 || bytes[1] === 0x02)) {

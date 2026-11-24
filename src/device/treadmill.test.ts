@@ -855,6 +855,39 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(setSpeeds(dev)).not.toEqual([]);
   });
 
+  it('a Stop that comes in while a raw Start is on its way keeps the wait: Start 07 held, 08 01, write released, 3.5, 2.5, 1.5', async () => {
+    const { tm, dev } = await coasting('stop');
+    let release!: () => void;
+    dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+    const raw = tm.sendRaw([0x07], { confirmed: true });
+    await flush();
+    const stopped = tm.sendRaw([0x08, 0x01]);
+    tm.setSpeed(5);
+    release();
+    await raw;
+    await stopped;
+    dev.writes = [];
+    for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a raw Start without a Stop in between still ends the wait', async () => {
+    const { tm, dev } = await coasting('stop');
+    let release!: () => void;
+    dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+    const raw = tm.sendRaw([0x07], { confirmed: true });
+    await flush();
+    tm.setSpeed(5);
+    release();
+    await raw;
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).not.toEqual([]);
+  });
+
   it('a lowered limit is not sent while the hold is stuck on a running belt; stop() and start() are the way out', async () => {
     const { tm, dev } = await coasting('stop');
     tm.setLimits({ speedLimit: 6 });

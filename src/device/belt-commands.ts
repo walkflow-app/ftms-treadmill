@@ -158,5 +158,5 @@ export function setupBelt(host: BeltHost) {
     return a && b;
   }
 
-  return { start, stop, pause };
+  return { start, stop, pause, epoch: () => epoch };
 }
