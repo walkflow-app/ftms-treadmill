@@ -122,7 +122,9 @@ export function setupBelt(host: BeltHost) {
     // The speed asked for last (before the stop, or chosen while the belt stood) is asked for again once Start went out; the
     // governor holds it until the belt moves and then ramps up from the start speed
     const chosen = governor.target ?? host.wanted();
-    governor.reset();
+    // The wait after a stop (the belt may still coast down) is kept until Start went out: a start that fails or is
+    // overtaken by a stop must not let the readings of a decelerating belt count as moving (#25)
+    governor.reset(governor.afterStop);
     standstill.disarm();
     const a = await c.send(cmdRequestControl());
     if (epoch !== mine) return false;
@@ -150,6 +152,7 @@ export function setupBelt(host: BeltHost) {
       session.beltStarted = true;
       session.stopSentWhileRunning = false;
       phase.startRequested(host.now());
+      governor.newRun();
       if (chosen !== null) governor.request(chosen);
     }
     return a && b;

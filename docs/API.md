@@ -225,20 +225,23 @@ belt moves. Before Start, or while the belt still stands, the speed is held (`sp
 once it moves.
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
-end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`):
+end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`),
+also not a lowered limit (`setLimits`; the target still comes down, and the stop already brings the belt down):
 
 - **The wait ends** when the belt was seen standing: readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above
   in between. One spurious 0.0 does not count.
-- **Or** when a new run begins: `start()`, a raw Start, or a Machine Status `started` that comes once the belt was seen
+- **Or** when a new run begins: `start()` once its Start went out (a `start()` that fails keeps the wait), a raw Start, or a Machine Status `started` that comes once the belt was seen
   standing for 1 s. A `started` while the belt still reports a speed, right after a single 0.0, or before any reading
   since the stop, does not count.
 - **After that** the speed asked for after the stop (with `setSpeed` during the coast-down) is ramped to as soon as the
   belt moves. The stop itself clears `state.target`; without a new `setSpeed`, the speed asked for last is ramped to
   again after `start()` ([promise 3](LIBRARY.md#what-the-library-promises)).
 - A treadmill that reports no standing belt and no confirmed `started` keeps the speed held until a new run begins or
-  the next connection: nothing is sent meanwhile. This can happen when the belt is restarted on the treadmill without a
+  the next connection: nothing is sent meanwhile, also not a lowered limit. This can happen when the belt is restarted on the treadmill without a
   reading below 0.1 km/h first: `setSpeed` then gives `speed-held-until-moving` on a moving belt, and `start()` is refused
   (`start-belt-moving`). **The way out:** `stop()`, then `start()`; the app can say so next to the notice.
+- So `speed-held-until-moving` can come while the belt visibly moves (coasting down, or in the case above). A text that
+  fits every case says that the speed is held and not sent yet ("5 km/h held for now"), not that it starts once the belt moves.
 - Accepted: one spurious 0.0, then no reading for 1 s or more, then a late `started` ends the wait although the belt may
   still be slowing down (checked on a treadmill before a release).
 
@@ -290,7 +293,9 @@ Changes the limit or the step while running. Lowering the limit takes effect at 
 readings at least 1 s apart show the belt above it; otherwise the target (at most the new limit) is approached in steps of at
 most `maxStep` from the last command, and the limit is sent in one command as soon as two readings at least 1 s apart show
 the belt above it. A limit above 6 km/h needs
-`limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. A limit that is not
+`limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. While the speed is
+held after a stop (see `setSpeed`), a lowered limit is not sent either (the target still comes down); if the belt runs
+then, `stop()` and `start()` end the hold. A limit that is not
 a finite number is ignored, and the one in force stays.
 
 ```ts
@@ -506,7 +511,7 @@ function noticeText(n: Notice): string {
     case 'write-dropped': return `Command dropped before it was sent: ${n.bytes}`;
     case 'write-failed': return `Command failed: ${typeof n.error === 'string' ? n.error : n.error.message}`;
     case 'no-allowed-speed': return `No speed allowed (${n.min}–${n.max} km/h)`;
-    case 'speed-held-until-moving': return `${n.kmh} km/h once the belt moves`;
+    case 'speed-held-until-moving': return `${n.kmh} km/h held for now`;
     case 'ramp-aborted': return 'Speed change ended';
     case 'start-speed-failed': return 'Start speed could not be set, not started';
     case 'start-belt-moving': return 'The belt is already moving';
@@ -537,7 +542,7 @@ tm.on('notice', n => console.log(noticeText(n)));
 | `write-dropped` | `bytes` | a waiting command was dropped because a Stop or Pause went first, or the speed limit was lowered below it while it waited |
 | `write-failed` | `error`: a [`TreadmillErrorCode`](#treadmillerror) or `{ message }` | a command did not go through |
 | `no-allowed-speed` | `min`, `max` | the limit is below the treadmill's lowest speed: nothing can be sent |
-| `speed-held-until-moving` | `kmh` | the speed is held until the belt moves |
+| `speed-held-until-moving` | `kmh` | the speed is held and not sent yet: the belt does not move yet, or it still coasts down after a stop (see `setSpeed`) |
 | `ramp-aborted` | | a speed command of the ramp could not be written; the ramp ended (a speed the treadmill refuses is `speed-refused`) |
 | `start-speed-failed` | | the lowest speed could not be set or was refused, so no Start was sent (`start()` returned `false`) |
 | `start-belt-moving` | | `start()` on a belt measured moving: nothing was sent (`start()` returned `false`) |

@@ -143,6 +143,8 @@ export class SpeedGovernor {
   get ramping() { return this.timer !== null || this.sending; }
   /** A target waits for the belt to move */
   get holding() { return this.moving === false && this._target !== null; }
+  /** A stop was sent or reported and the belt was not seen standing since, and no new run began */
+  get afterStop() { return this.coasting; }
   get currentRange(): SpeedRange { return { ...this.range }; }
 
   msSinceLastCommand(): number {

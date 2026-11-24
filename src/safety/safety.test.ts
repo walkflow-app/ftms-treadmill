@@ -268,6 +268,18 @@ describe('SpeedGovernor', () => {
       expect(sent.length).toBe(1);
     });
 
+    it('a lowered limit during the coast-down brings the target down but sends nothing', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(5);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [4.5, 4.5]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      gov.setRange({ min: 1, max: 3 });
+      for (const kmh of [4, 3.5]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(2000); }
+      expect(gov.target).toBe(3);
+      expect(sent).toEqual([]);
+    });
+
     it('a plain reset (start, new connection) does not wait', async () => {
       const { gov, sent } = make();
       gov.reset();

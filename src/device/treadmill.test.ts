@@ -812,6 +812,23 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
   });
 
+  it('a start that fails during the coast-down does not end the wait: 3.5, 0, start fails, 2.5, 2, 1.5', async () => {
+    const { tm, dev, notices } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0); // one spurious 0.0 (#49): Start is not refused as on a moving belt
+    dev.writeImpl = async d => { if (d[0] === 0x02) throw new Error('GATT busy'); };
+    expect(await tm.start()).toBe(false);
+    expect(notices).toContainEqual({ code: 'start-speed-failed' });
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    tm.setSpeed(5); // asked for again after the failed start
+    for (const kmh of [2.5, 2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
   it('a late Machine Status started while the belt still coasts down does not end the wait', async () => {
     const { tm, dev } = await coasting('stop');
     dev.speed(3.5);
