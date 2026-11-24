@@ -809,7 +809,7 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     clock += 2000;
     dev.speed(1);
     await flush();
-    expect(setSpeeds(dev).length).toBeGreaterThan(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
   });
 
   it('a late Machine Status started while the belt still coasts down does not end the wait', async () => {
@@ -857,6 +857,6 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     clock += 2000;
     dev.speed(1);
     await flush();
-    expect(setSpeeds(dev).length).toBeGreaterThan(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
   });
 });

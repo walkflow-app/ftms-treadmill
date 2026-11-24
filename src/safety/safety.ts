@@ -372,7 +372,11 @@ export class SpeedGovernor {
    * The treadmill reports Machine Status "started". While the belt coasts down after a stop this is a new run only once
    * standing is confirmed (readings below STANDING_KMH, the first at least CONFIRM_MS ago, none above since): a late or
    * mistaken "started" while the belt still reports a speed, after one spurious 0.0 (#49), or before anything was measured
-   * does not end the wait (#25). A treadmill that goes silent at a standstill is confirmed by the time since its last 0.
+   * does not end the wait (#25). A treadmill that goes silent at a standstill is confirmed by the time since its first
+   * reading below STANDING_KMH; one that reported none since the stop keeps the wait until a new run begins (fail-safe).
+   * Accepted window: one spurious 0.0, then no reading for CONFIRM_MS or more (a gap of the connection), then a late
+   * "started" ends the wait although the belt may still coast down; a reading in the gap would have prevented it. It needs
+   * three faults at once and is checked on a treadmill (does a reading below 0.1 come before "started"?).
    */
   startedReported() {
     if (!this.coasting) return;

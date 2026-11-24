@@ -232,11 +232,15 @@ end) the belt coasts down while it still reports speeds above 0, and nothing is 
 - **Or** when a new run begins: `start()`, a raw Start, or a Machine Status `started` that comes once the belt was seen
   standing for 1 s. A `started` while the belt still reports a speed, right after a single 0.0, or before any reading
   since the stop, does not count.
-- **After that** the held speed is ramped to as soon as the belt moves.
+- **After that** the speed asked for after the stop (with `setSpeed` during the coast-down) is ramped to as soon as the
+  belt moves. The stop itself clears `state.target`; without a new `setSpeed`, the speed asked for last is ramped to
+  again after `start()` ([promise 3](LIBRARY.md#what-the-library-promises)).
 - A treadmill that reports no standing belt and no confirmed `started` keeps the speed held until a new run begins or
-  the next connection: nothing is sent meanwhile.
-- A stop clears `state.target`; the speed asked for last is ramped to again after `start()`
-  ([promise 3](LIBRARY.md#what-the-library-promises)).
+  the next connection: nothing is sent meanwhile. This can happen when the belt is restarted on the treadmill without a
+  reading below 0.1 km/h first: `setSpeed` then gives `speed-held-until-moving` on a moving belt, and `start()` is refused
+  (`start-belt-moving`). **The way out:** `stop()`, then `start()`; the app can say so next to the notice.
+- Accepted: one spurious 0.0, then no reading for 1 s or more, then a late `started` ends the wait although the belt may
+  still be slowing down (checked on a treadmill before a release).
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).
