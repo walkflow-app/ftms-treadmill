@@ -184,3 +184,21 @@ describe('Treadmill Data', () => {
     expect(r.governor.reset).not.toHaveBeenCalled();
   });
 });
+
+describe('Training Status (#39)', () => {
+  it('Post-Workout is the hint of a stop: the governor waits as after a stop, nothing is ended or changed on the belt', () => {
+    const r = rig({ program: true });
+    r.session.beltStarted = true;
+    r.reports.trainingStatus(dv(0x00, 0x0f));
+    expect(r.governor.reset).toHaveBeenCalledWith(true);
+    expect(r.host.ended).not.toHaveBeenCalled();
+    expect(r.session.beltStarted).toBe(true);
+  });
+
+  it.each([[0x01], [0x0d], [0x0e], [0x10]])('status %i and a short report change nothing', status => {
+    const r = rig();
+    r.reports.trainingStatus(dv(0x00, status));
+    r.reports.trainingStatus(dv(0x00));
+    expect(r.governor.reset).not.toHaveBeenCalled();
+  });
+});

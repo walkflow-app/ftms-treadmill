@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTreadmillData, dataView, hex } from '../protocol/ftms.ts';
 import type { Notice } from '../protocol/notice.ts';
 import { DEFAULT_SPEED_LIMIT } from '../safety/safety.ts';
@@ -30,7 +30,7 @@ class FakeTreadmill implements BleDevice {
   }
   async subscribe(s: Uuid, c: Uuid, cb: (dv: DataView) => void) {
     const key = `${s.toString(16)}/${c.toString(16)}`;
-    if (!['1826/2ad9', '1826/2acd', '1826/2ada'].includes(key)) throw new Error('not there');
+    if (!['1826/2ad9', '1826/2acd', '1826/2ada', '1826/2ad3'].includes(key)) throw new Error('not there');
     this.subs.set(key, cb);
   }
   async write(_s: Uuid, _c: Uuid, data: Uint8Array) {
@@ -40,6 +40,8 @@ class FakeTreadmill implements BleDevice {
   /** The treadmill reports its speed */
   speed(kmh: number) { this.subs.get('1826/2acd')!(dataView(buildTreadmillData({ speed: kmh }))); }
   machineStatus(...bytes: number[]) { this.subs.get('1826/2ada')!(dataView(bytes)); }
+  /** The treadmill reports its training status (01 + status byte) */
+  trainingStatus(status: number) { this.subs.get('1826/2ad3')!(dataView([0x00, status])); }
   /** The treadmill answers a command */
   answer(op: number, result: number) { this.subs.get('1826/2ad9')!(dataView([0x80, op, result])); }
 }
@@ -1008,5 +1010,78 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     dev.speed(1);
     await flush();
     expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
+  });
+});
+
+describe('a stop at the treadmill is learned from Training Status 0f, before its Machine Status (#39)', () => {
+  const setSpeeds = (dev: FakeTreadmill) => dev.writes.filter(w => w.startsWith('02'));
+  /** Time passes for the clock of the library and for its timers */
+  const tick = async (ms: number) => { clock += ms; await vi.advanceTimersByTimeAsync(ms); };
+
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  /** A ramp from 1.0 to 4.0 km/h with a step every 2 s, the first step (1.5) written */
+  async function ramping() {
+    const r = await rig({ speedLimit: 4 });
+    r.dev.speed(1);
+    r.tm.setSpeed(4);
+    await tick(0);
+    expect(setSpeeds(r.dev)).toEqual(['02 96 00']);
+    await tick(2000);
+    r.dev.speed(1.5);
+    await tick(0);
+    expect(setSpeeds(r.dev)).toEqual(['02 96 00', '02 c8 00']);
+    return r;
+  }
+
+  it('the ramp goes on without the hint (the control for the tests below)', async () => {
+    const { dev } = await ramping();
+    dev.writes = [];
+    await tick(2000);
+    await tick(2000);
+    expect(setSpeeds(dev)).toEqual(['02 fa 00', '02 2c 01']);
+  });
+
+  it('after Post-Workout no further ramp step goes out, though the belt still reports speed (the log of 2026-11-22)', async () => {
+    const { tm, dev } = await ramping();
+    dev.writes = [];
+    dev.trainingStatus(0x0f);
+    for (const kmh of [2, 2.5, 3, 3.5, 3]) { dev.speed(kmh); await tick(2000); }
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBeNull(); // forgotten like after a stop; the next Start ramps up to the speed asked for last
+    expect(tm.state.ramping).toBe(false);
+  });
+
+  it('the Machine Status that follows 4 to 8 s later changes nothing more', async () => {
+    const { dev } = await ramping();
+    dev.writes = [];
+    dev.trainingStatus(0x0f);
+    for (const kmh of [3, 2, 1]) { dev.speed(kmh); await tick(2000); }
+    dev.machineStatus(0x02, 0x01);
+    dev.speed(0.5);
+    await tick(2000);
+    expect(setSpeeds(dev)).toEqual([]);
+  });
+
+  it('the hold ends with a new run: start() sends the start speed, then the ramp goes on', async () => {
+    const { tm, dev } = await ramping();
+    dev.trainingStatus(0x0f);
+    dev.speed(0);
+    await tick(5000);
+    await tm.start();
+    dev.writes = [];
+    await tick(2000);
+    dev.speed(1);
+    await tick(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']);
+  });
+
+  it('other training statuses change nothing', async () => {
+    const { dev } = await ramping();
+    dev.writes = [];
+    for (const s of [0x01, 0x0d, 0x0e]) dev.trainingStatus(s);
+    await tick(2000);
+    expect(setSpeeds(dev)).toEqual(['02 fa 00']);
   });
 });

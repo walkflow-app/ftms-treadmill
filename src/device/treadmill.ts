@@ -400,6 +400,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
         if (!current()) return;
         const s = parseTrainingStatus(dv);
         emit('trainingStatus', { hex: hex(dv), status: s?.status ?? null, text: s?.text ?? null });
+        reports.trainingStatus(dv);
       },
       controlResponse: r => { if (current()) reports.controlResponse(r); },
       disconnected: () => { if (current()) onDisconnected(); },

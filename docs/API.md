@@ -231,7 +231,8 @@ belt moves. Before Start, or while the belt still stands, the speed is held (`sp
 once it moves.
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
-end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`).
+end, or the training status `Post-Workout` (`0f`), which some treadmills report 4 to 8 s before their Machine Status "stopped")
+the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`).
 The wait ends only on what the belt is seen to do, never on a message alone:
 
 - **Standing:** readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above in between. One spurious 0.0 does
@@ -451,7 +452,7 @@ off();
 | `data` | [`TreadmillData`](#treadmilldata) | the treadmill reports (about once a second) |
 | `heartRate` | `number` (bpm) | the Heart Rate service reports |
 | `machineStatus` | `{ event: MachineEvent \| null; hex: string }` | the treadmill reports a change ([`MachineEvent`](#machineevent)) |
-| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`) |
+| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`). `Post-Workout` (`0f`) also counts as the hint of a stop: the ramp is forgotten and nothing is sent until the wait after a stop ends (see `setSpeed`); no `ended` comes from it |
 | `controlResponse` | [`ControlPointResponse`](#controlpointresponse) | every answer to a command, also an OK |
 | `notice` | [`Notice`](#notices) | something worth telling the person or a log |
 | `log` | `string` | protocol lines (bytes sent, an answer that could not be read); not for people |

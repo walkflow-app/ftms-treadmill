@@ -2,7 +2,7 @@
 // the belt phase and the standstill detection), Machine Status (the treadmill stopped by itself, control lost) and the
 // answers to commands (a refused Stop, a refused speed). Everything is handed on to the app as well; this sends nothing.
 
-import { hex, OP, parseMachineStatus, type ControlPointResponse, type MachineEvent, type TreadmillData } from '../protocol/ftms.ts';
+import { hex, OP, parseMachineStatus, parseTrainingStatus, type ControlPointResponse, type MachineEvent, type TreadmillData } from '../protocol/ftms.ts';
 import type { Notice } from '../protocol/notice.ts';
 import type { BeltPhaseTracker } from '../safety/belt-phase.ts';
 import type { SpeedGovernor, StandstillDetector } from '../safety/safety.ts';
@@ -34,6 +34,8 @@ export interface ReportsHost {
 const RESULT_OK = 1;
 /** Control Point result code "Control Not Permitted" */
 const RESULT_CONTROL_NOT_PERMITTED = 5;
+/** Training Status "Post-Workout" */
+const TRAINING_POST_WORKOUT = 0x0f;
 
 const MACHINE_ENDS: Partial<Record<MachineEvent['kind'], ReportedEnd>> = {
   stopped: 'machine-stopped',
@@ -81,6 +83,18 @@ export function setupReports(host: ReportsHost) {
   }
 
   /**
+   * Training Status "Post-Workout" (0x0f) comes about a second after a stop, at the treadmill or sent by the app, and 4 to 8 s
+   * before the Machine Status "stopped" (Sportstech sPad 500, #39). It is taken as the hint of a stop: the ramp is forgotten
+   * and nothing is sent until the wait after a stop ends, like for that Machine Status. Whether it comes in other cases is
+   * not known; a wrong guess only holds the ramp back (the wait ends when the belt is seen standing or running again, or
+   * with the next start), so the belt is never made faster by it. It tells no `ended` and does not change the belt phase:
+   * those wait for the Machine Status, which is the report of a stop.
+   */
+  function trainingStatus(dv: DataView) {
+    if (parseTrainingStatus(dv)?.status === TRAINING_POST_WORKOUT) governor.reset(true);
+  }
+
+  /**
    * A write that went through is not yet a command the treadmill accepted. What it refused must not count as done: a refused
    * Stop on a moving belt is told to the person, a refused speed ends the ramp, refused control is asked for again at the next stop.
    */
@@ -107,5 +121,5 @@ export function setupReports(host: ReportsHost) {
     }
   }
 
-  return { data, machineStatus, controlResponse };
+  return { data, machineStatus, trainingStatus, controlResponse };
 }
