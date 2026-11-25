@@ -4,7 +4,7 @@
 
 import { hex, OP, parseMachineStatus, type ControlPointResponse, type MachineEvent, type TreadmillData } from '../protocol/ftms.ts';
 import type { Notice } from '../protocol/notice.ts';
-import type { BeltPhaseTracker } from '../safety/belt-phase.ts';
+import { MOVING_KMH, type BeltPhaseTracker } from '../safety/belt-phase.ts';
 import type { SpeedGovernor, StandstillDetector } from '../safety/safety.ts';
 import type { BeltState } from './belt-state.ts';
 
@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused' | 'afterStop'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused' | 'afterStop' | 'stops' | 'newRun'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -30,6 +30,9 @@ export interface ReportsHost {
   controlResponse(r: ControlPointResponse): void;
 }
 
+/** A Training Status hint of a stop that no Machine Status stop followed in this long (a real one comes within 4 to 8 s) is dropped */
+const HINT_WINDOW_MS = 15_000;
+
 /** Control Point result code "Success" */
 const RESULT_OK = 1;
 /** Control Point result code "Control Not Permitted" */
@@ -43,6 +46,8 @@ const MACHINE_ENDS: Partial<Record<MachineEvent['kind'], ReportedEnd>> = {
 
 export function setupReports(host: ReportsHost) {
   const { session, phase, governor, standstill } = host;
+  /** The hold a Training Status hint started (when, and the governor's stop count right after it) */
+  let hint: { at: number; stops: number } | null = null;
 
   function data(r: TreadmillData) {
     if (r.speed !== undefined) {
@@ -51,6 +56,7 @@ export function setupReports(host: ReportsHost) {
       session.lastMeasured = r.speed;
       session.lastMeasuredAt = now;
       governor.noteMeasured(r.speed);
+      hintExpired(r.speed, now);
       if (standstill.feed(r.speed, now) && host.programActive()) {
         host.ended('standstill');
         governor.reset(true);
@@ -90,6 +96,18 @@ export function setupReports(host: ReportsHost) {
   function stopHint() {
     if (governor.afterStop) return;
     governor.reset(true);
+    hint ={ at: host.now(), stops: governor.stops };
+  }
+
+  /**
+   * A hint no stop followed ends its own hold: the Machine Status of a real stop comes within 4 to 8 s, and a belt still
+   * running steadily after HINT_WINDOW_MS means the hint was something else. Only the hold the hint started ends: any stop
+   * since (sent by the app, or reported) is a real one and keeps its own wait.
+   */
+  function hintExpired(speed: number, now: number) {
+    if (!hint) return;
+    if (!governor.afterStop || governor.stops !== hint.stops) { hint = null; return; }
+    if (now - hint.at >= HINT_WINDOW_MS && speed >= MOVING_KMH) { hint = null; governor.newRun(); }
   }
 
   /**

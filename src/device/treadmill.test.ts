@@ -811,21 +811,48 @@ describe('a stop at the treadmill is hinted by Training Status 0f (#39)', () => 
   it('the echo of a stop the app sent is no second stop: it does not overtake a Start', async () => {
     const { tm, dev } = await ramping();
     await tm.stop();
-    await settle(dev, 0);
-    await settle(dev, 0);
-    dev.trainingStatus(0x01, 0x0f); // 1 s after the app's stop, while the wait runs
+    clock += 10_000; // the belt was not seen standing: the wait after the stop still runs
+    dev.writeImpl = async d => { if (d[0] === 0x07) dev.trainingStatus(0x01, 0x0f); }; // 1 s after the stop, while Start is written
     expect(await tm.start()).toBe(true);
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    await settle(dev, 1);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']);
   });
 
   it('a Start from the app ends the hold', async () => {
     const { tm, dev } = await ramping();
     dev.trainingStatus(0x01, 0x0f);
-    await settle(dev, 0);
-    await settle(dev, 0);
-    await tm.start();
+    clock += 10_000; // no standing readings: only the Start ends the hold
+    expect(await tm.start()).toBe(true);
     dev.writes = [];
     await settle(dev, 1);
     expect(setSpeeds(dev)).toEqual(['02 96 00']);
+  });
+
+  it('a hint no stop follows ends its hold: a belt that runs on steadily may be slowed again', async () => {
+    const { tm, dev } = await ramping();
+    dev.trainingStatus(0x01, 0x0f);
+    await settle(dev, 3);
+    clock += 15_000;
+    dev.speed(3);
+    dev.speed(3);
+    await settle(dev, 3);
+    dev.writes = [];
+    tm.setSpeed(2);
+    await settle(dev, 3);
+    expect(setSpeeds(dev).length).toBeGreaterThan(0);
+  });
+
+  it('a stop that follows the hint keeps its wait however long the belt runs on', async () => {
+    const { tm, dev } = await ramping();
+    dev.trainingStatus(0x01, 0x0f);
+    dev.machineStatus(0x02, 0x01);
+    for (let i = 0; i < 3; i++) { clock += 10_000; dev.speed(3); await settle(dev, 3); }
+    dev.writes = [];
+    tm.setSpeed(2);
+    await settle(dev, 3);
+    expect(setSpeeds(dev)).toEqual([]);
   });
 
   it('other training statuses change nothing', async () => {

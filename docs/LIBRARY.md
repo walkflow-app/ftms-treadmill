@@ -167,9 +167,12 @@ one of them is a `safety` commit and at least a minor version.
    A stop pressed on the treadmill is reported by its Machine Status only 4 to 8 s later, but about a second after the
    press the treadmill reports Training Status `0x0f` (Post-Workout). The library takes that as the hint of a stop: from then
    on it behaves as after a stop (the ramp is forgotten, nothing is sent, the same wait, ended by the same evidence), without
-   waiting for the Machine Status. The hint only ever holds back what is sent; whatever else `0x0f` may mean on a treadmill,
-   a wrong guess costs a delayed ramp, never a faster belt (open hardware question of #39). The hint does not count as a
-   second stop when a wait after a stop is running already (the treadmill reports it a second after every stop the app sent).
+   waiting for the Machine Status. The hint only ever holds back what is sent. A hint that no stop follows ends its own hold:
+   when 15 s (`HINT_WINDOW_MS`, a real Machine Status comes within 4 to 8 s) after it the belt is still reported at or above
+   `MOVING_KMH`, a new run is assumed and the wait ends, so a wrong guess (whatever else `0x0f` may mean on a treadmill, open
+   hardware question of #39) costs a delayed ramp or lowered limit of at most that long, never a faster belt. Any stop sent
+   or reported since keeps its own wait. The hint does not count as a second stop when a wait after a stop is running
+   already (the treadmill reports it a second after every stop the app sent).
 8. No method throws during a session (only `connect`); a failed command is `false` plus a notice.
 
 ## Packaging
