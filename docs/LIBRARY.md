@@ -142,7 +142,10 @@ one of them is a `safety` commit and at least a minor version.
    answer to Set Speed delays Start by up to 1 s. Only the answer to that write counts, not an earlier or a raw one.
    `start()` on a belt measured moving (a reading up to 5 s old, or an older one while the belt counts as started) sends nothing (`start-belt-moving`), so the belt is never dropped to the lowest
    speed in one step. After Start the speed asked for last on this connection (chosen while standing, or the one before a
-   stop or pause) is ramped up to from there, once the belt moves.
+   stop or pause) is ramped up to from there, once the belt moves. A treadmill that counts down after Start (Training
+   Status `Pre-Workout`, `0e`) reports a speed meanwhile but ignores Set Speed: the belt does not count as moving until the
+   status changes (`0d`), or 10 s (`COUNTDOWN_MAX_MS`) after the `0e` at the latest; no step goes out before. A belt that
+   already counts as moving is not held by a `0e`.
 4. Stop and Pause go out ahead of everything queued, end a Start that is still being sent, ask for control first if it was
    lost (a Stop refused for missing control counts as lost: the next Stop asks first), and are sent up to `STOP_ATTEMPTS` times. A raw
    Stop or Pause in the console is one of them. `start()` does not take over while a Stop or Pause is being sent: it sends

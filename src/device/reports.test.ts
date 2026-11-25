@@ -15,6 +15,7 @@ function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
     hintStop: vi.fn(),
+    noteTrainingStatus: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;
@@ -195,6 +196,14 @@ describe('Training Status (#39)', () => {
     expect(r.governor.reset).not.toHaveBeenCalled(); // the governor decides: a hint is no stop report
     expect(r.host.ended).not.toHaveBeenCalled();
     expect(r.session.beltStarted).toBe(true);
+  });
+
+  it('every status is told to the governor, for the start countdown', () => {
+    const r = rig();
+    r.reports.trainingStatus(dv(0x00, 0x0e));
+    r.reports.trainingStatus(dv(0x00, 0x0d));
+    expect(r.governor.noteTrainingStatus).toHaveBeenNthCalledWith(1, 0x0e);
+    expect(r.governor.noteTrainingStatus).toHaveBeenNthCalledWith(2, 0x0d);
   });
 
   it.each([[0x01], [0x0d], [0x0e], [0x10]])('status %i and a short report change nothing', status => {

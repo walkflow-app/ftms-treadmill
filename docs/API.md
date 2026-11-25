@@ -228,7 +228,10 @@ Sets the speed to go to. Returns the target it will actually ramp to (inside the
 
 How it gets there: in steps of at most `maxStep`, one command at most every `RAMP_INTERVAL_MS` (1.5 s), only while the
 belt moves. Before Start, or while the belt still stands, the speed is held (`speed-held-until-moving`) and ramped to
-once it moves.
+once it moves. After Start a treadmill may count down (training status `Pre-Workout`, `0e`) and report a speed
+meanwhile, but ignore Set Speed: the belt does not count as moving until the training status changes (`0d`, Manual Mode),
+at most 10 s after the `0e`, then as for a treadmill that reports no training status. The speed is
+held meanwhile (`speed-held-until-moving`).
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
 end, or the training status `Post-Workout` (`0f`), which some treadmills report 4 to 8 s before their Machine Status "stopped";

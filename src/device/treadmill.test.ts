@@ -1077,6 +1077,20 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     expect(setSpeeds(dev)).toEqual(['02 96 00']);
   });
 
+  it('Start, then the treadmill counts down in Pre-Workout (0e) and reports 1.0: no step before 0d, then it goes on (#38)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 4 });
+    await tm.start();
+    dev.trainingStatus(0x0e);
+    tm.setSpeed(2);
+    dev.writes = [];
+    for (let i = 0; i < 4; i++) { dev.speed(1); await tick(1000); }
+    expect(setSpeeds(dev)).toEqual([]);
+    dev.trainingStatus(0x0d);
+    dev.speed(1);
+    await tick(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']);
+  });
+
   it('other training statuses change nothing', async () => {
     const { dev } = await ramping();
     dev.writes = [];

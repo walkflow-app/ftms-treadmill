@@ -119,6 +119,17 @@ const RUNNING_RISE_KMH = 0.5;
 const HINT_WINDOW_MS = 10_000;
 
 /**
+ * The most the first ramp step waits for the end of the treadmill's start countdown (Training Status "Pre-Workout", 0e, ends
+ * with "Manual Mode", 0d; #38). A treadmill reports a speed during the countdown and ignores Set Speed then. A treadmill that
+ * never leaves 0e is held this long after the 0e, then treated as one that reports no training status. Above the library's
+ * start time (4.5 s).
+ */
+export const COUNTDOWN_MAX_MS = 10_000;
+
+/** Training Status "Pre-Workout": the treadmill's start countdown */
+const TRAINING_PRE_WORKOUT = 0x0e;
+
+/**
  * The only place that creates speed commands. Approaches every target in steps of at most maxStep,
  * with at least intervalMs between two commands, and never beyond the range.
  *
@@ -157,6 +168,11 @@ export class SpeedGovernor {
   private stopCount = 0;
   /** The end of a wait that only a hint of a stop started (hintStop), until HINT_WINDOW_MS has passed */
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Training Status "Pre-Workout" was reported and not left since: the belt does not count as moving (#38) */
+  private countdown = false;
+  /** The time for the countdown ran out: a further 0e does not hold again until a reset or another status */
+  private countdownOver = false;
+  private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -258,7 +274,7 @@ export class SpeedGovernor {
       if (!this.coasting) this.run = null;
     }
     const was = this.moving;
-    this.moving = !this.coasting && kmh >= MOVING_KMH;
+    this.moving = !this.coasting && !this.countdown && kmh >= MOVING_KMH;
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
     if ((confirmedNow || overConfirmed) && this.limitPending) {
@@ -442,12 +458,46 @@ export class SpeedGovernor {
       if (this.stopCount !== stops || !this.coasting) return;
       this.newRun();
       const m = this.measured;
-      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH) {
+      if (!this.countdown && m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH) {
         this.moving = true;
         this.pump();
       }
       this.deps.onChange?.();
     }, HINT_WINDOW_MS);
+  }
+
+  /**
+   * The treadmill's training status. "Pre-Workout" (0e) is its start countdown: it reports a speed meanwhile but ignores Set
+   * Speed, so the belt does not count as moving until another status comes (0d, Manual Mode) or COUNTDOWN_MAX_MS has passed.
+   * A treadmill that reports no training status is not held. Only less is sent: a held target waits (speed-held-until-moving).
+   */
+  noteTrainingStatus(status: number) {
+    if (status !== TRAINING_PRE_WORKOUT) {
+      this.countdownOver = false;
+      this.endCountdown();
+      return;
+    }
+    // A belt already counted as moving (ramp or a lowered limit under way) is not held: this is no start countdown, and a
+    // hold must never keep back a command down
+    if (this.countdown || this.countdownOver || this.moving === true) return;
+    this.countdown = true;
+    this.moving = false;
+    this.countdownTimer = setTimeout(() => { this.countdownTimer = null; this.countdownOver = true; this.endCountdown(); }, COUNTDOWN_MAX_MS);
+    this.deps.onChange?.();
+  }
+
+  /** The countdown is over (0d, another status, or the time): a belt seen moving counts as moving, the held target goes on */
+  private endCountdown() {
+    if (this.countdownTimer !== null) clearTimeout(this.countdownTimer);
+    this.countdownTimer = null;
+    if (!this.countdown) return;
+    this.countdown = false;
+    const m = this.measured;
+    if (!this.coasting && m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH && m.kmh <= LIMIT_MAX) {
+      this.moving = true;
+      this.pump();
+    }
+    this.deps.onChange?.();
   }
 
   /**
@@ -459,6 +509,10 @@ export class SpeedGovernor {
   reset(afterStop = false) {
     if (this.hintTimer !== null) clearTimeout(this.hintTimer);
     this.hintTimer = null;
+    this.countdown = false;
+    this.countdownOver = false;
+    if (this.countdownTimer !== null) clearTimeout(this.countdownTimer);
+    this.countdownTimer = null;
     if (afterStop) this.stopCount++;
     this.coasting = afterStop;
     this.standingSince = null;

@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'hintStop' | 'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'hintStop' | 'noteTrainingStatus' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -91,7 +91,10 @@ export function setupReports(host: ReportsHost) {
    * those wait for the Machine Status, which is the report of a stop.
    */
   function trainingStatus(dv: DataView) {
-    if (parseTrainingStatus(dv)?.status === TRAINING_POST_WORKOUT) governor.hintStop();
+    const status = parseTrainingStatus(dv)?.status;
+    if (status === undefined) return;
+    governor.noteTrainingStatus(status); // Pre-Workout (0e) is the start countdown, #38
+    if (status === TRAINING_POST_WORKOUT) governor.hintStop();
   }
 
   /**

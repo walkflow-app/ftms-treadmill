@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  beltMaybeRunning, checkConsoleCommand, controlAvailability, clampSpeed, DEFAULT_MAX_STEP, DEFAULT_SPEED_LIMIT,
+  beltMaybeRunning, checkConsoleCommand, COUNTDOWN_MAX_MS, controlAvailability, clampSpeed, DEFAULT_MAX_STEP, DEFAULT_SPEED_LIMIT,
   LIMIT_MAX, parseHexBytes, planRamp, RAMP_INTERVAL_MS, SpeedGovernor, StandstillDetector, type ConsoleContext,
 } from './safety.ts';
 import type { Notice } from '../protocol/notice.ts';
@@ -1167,6 +1167,118 @@ describe('SpeedGovernor', () => {
     gov.request(4);
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sent.map(s => s[1])).toEqual([3, 4]);
+  });
+
+  describe("the treadmill's start countdown (Training Status Pre-Workout 0e, #38)", () => {
+    it('no ramp step while 0e lasts, though the belt reports a speed; after 0d it goes on from the measured speed', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.noteTrainingStatus(0x0e);
+      gov.request(2);
+      for (let i = 0; i < 4; i++) {
+        gov.noteMeasured(1);
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+      gov.noteTrainingStatus(0x0d);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent).toEqual([[4000, 1.5]]);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(sent.map(s => s[1])).toEqual([1.5, 2]);
+    });
+
+    it('a treadmill that never leaves 0e holds for at most COUNTDOWN_MAX_MS, then behaves as before', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.noteTrainingStatus(0x0e);
+      gov.request(1.5);
+      for (let t = 0; t < COUNTDOWN_MAX_MS - 1000; t += 1000) { gov.noteMeasured(1); await vi.advanceTimersByTimeAsync(1000); }
+      gov.noteMeasured(1); // the treadmill keeps reporting
+      await vi.advanceTimersByTimeAsync(999);
+      expect(sent).toEqual([]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sent).toEqual([[COUNTDOWN_MAX_MS, 1.5]]);
+      expect(COUNTDOWN_MAX_MS).toBeGreaterThanOrEqual(4500);
+    });
+
+    it('a repeated 0e after the time ran out does not hold again', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.noteTrainingStatus(0x0e);
+      for (let t = 0; t < COUNTDOWN_MAX_MS - 1000; t += 1000) { gov.noteMeasured(1); await vi.advanceTimersByTimeAsync(1000); }
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      gov.noteMeasured(1);
+      gov.noteTrainingStatus(0x0e);
+      gov.request(1.5);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent).toEqual([[COUNTDOWN_MAX_MS, 1.5]]);
+    });
+
+    it('a stop (reset) ends the hold and its timer; a new Start can hold again', async () => {
+      const { gov, sent } = make();
+      gov.noteTrainingStatus(0x0e);
+      gov.reset(true);
+      await vi.advanceTimersByTimeAsync(COUNTDOWN_MAX_MS * 2);
+      expect(sent).toEqual([]);
+      gov.reset();
+      gov.noteTrainingStatus(0x0e);
+      gov.request(2);
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sent).toEqual([]);
+    });
+
+    it('a belt already counted as moving is not held by 0e: a lower speed still goes out', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.request(5);
+      gov.noteMeasured(5);
+      await vi.advanceTimersByTimeAsync(0);
+      sent.length = 0;
+      gov.noteTrainingStatus(0x0e);
+      expect(gov.holding).toBe(false);
+      gov.request(4.5);
+      gov.noteMeasured(5);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(sent.map(s => s[1])).toContain(4.5);
+    });
+
+    it('0d or the time running out during the coast-down of a stop sends nothing', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(3);
+      gov.reset(true);
+      gov.noteTrainingStatus(0x0e);
+      gov.request(4);
+      for (let t = 0; t < COUNTDOWN_MAX_MS + 1000; t += 1000) {
+        gov.noteMeasured(3);
+        if (t === 3000) gov.noteTrainingStatus(0x0d);
+        await vi.advanceTimersByTimeAsync(1000);
+      }
+      expect(sent).toEqual([]);
+    });
+
+    it('the hint-of-stop timer does not end a countdown hold: nothing is sent while 0e lasts', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(3);
+      gov.hintStop();
+      await vi.advanceTimersByTimeAsync(8000);
+      gov.noteMeasured(1);
+      gov.noteTrainingStatus(0x0e);
+      gov.request(2);
+      for (let i = 0; i < 4; i++) { gov.noteMeasured(1); await vi.advanceTimersByTimeAsync(1000); }
+      expect(sent).toEqual([]);
+    });
+
+    it('without a training status nothing changes: the belt moving at 1 s counts as moving', async () => {
+      const { gov, sent } = make();
+      gov.reset();
+      gov.request(2);
+      gov.noteMeasured(1);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(sent).toEqual([[0, 1.5]]);
+    });
   });
 
   describe('a speed chosen while the belt stands', () => {
