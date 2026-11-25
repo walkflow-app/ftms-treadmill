@@ -156,7 +156,15 @@ one of them is a `safety` commit and at least a minor version.
    treadmill reporting a stop the app already made forgets the ramp again but tells no second end; a start, the belt
    moving again, a program that begins or a new connection opens a new run.
    After a stop of any kind the belt coasts down, and the governor sends nothing (no ramp step, no lowered limit) during
-   that wait. A speed asked for meanwhile is held (`speed-held-until-moving`). The wait ends when the belt is seen standing
+   that wait. A stop at the treadmill is learned from its Machine Status only 4 to 8 s after the press; the Training Status
+   `Post-Workout` (`0f`), which the sPad 500 reports about a second after any stop, starts the same wait at once (the ramp
+   is forgotten, no `ended` and no phase change yet: those wait for the Machine Status). Whether `0f` comes in other cases is
+   not known, so a wait that only `0f` started ends by itself after `HINT_WINDOW_MS` (10 s) if no stop report, no Stop sent
+   by the app and no standing belt came meanwhile: it ends like a new run, and a lower speed and a lowered limit go out again.
+   The wait after a stop that was sent or reported has no time limit, and a `0f` that arrives while such a wait runs
+   (the echo after every stop of the app) changes nothing. A wrong guess never makes the belt faster.
+   A speed asked for meanwhile is held (`speed-held-until-moving`).
+   The wait ends when the belt is seen standing
    (readings below `STANDING_KMH` at least `CONFIRM_MS` apart, none above in between), when it is seen running again (three
    or more readings at or above `MOVING_KMH` over at least 3 s, none lower than the one before, the latest at least
    0.5 km/h above the first), or when a new run begins (`start()` or a raw Start once it went out, with no stop sent or
