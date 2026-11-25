@@ -1120,18 +1120,38 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     expect(setSpeeds(dev)).toEqual(['02 96 00']);
   });
 
-  it('a stop during the countdown ends the hold', async () => {
+  it('a stop during the countdown ends the hold: after the next Start the ramp needs no 0d (#38)', async () => {
     const { tm, dev } = await countdown();
     dev.speed(1);
     await tick(1000);
     const stopping = tm.stop();
     await tick(1000);
     await stopping;
+    dev.speed(0);
+    await tick(1500);
+    dev.speed(0);
+    await tick(1500);
+    tm.setSpeed(2);
+    const starting = tm.start();
+    await tick(1500);
+    await starting;
     dev.writes = [];
-    dev.trainingStatus(0x0d);
     dev.speed(1);
     await tick(2000);
-    expect(setSpeeds(dev)).toEqual([]); // the target was forgotten by the stop
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // no 0e came after this Start: nothing is held from the old one
+  });
+
+  it('a 0e while the ramp runs is no countdown: the ramp goes on and a lowered limit goes out on time', async () => {
+    const { tm, dev } = await ramping();
+    dev.writes = [];
+    dev.trainingStatus(0x0e);
+    await tick(2000);
+    dev.speed(2);
+    await tick(0);
+    expect(setSpeeds(dev)).toEqual(['02 fa 00']);
+    tm.setLimits({ speedLimit: 1.5 });
+    await tick(2000);
+    expect(setSpeeds(dev)).toContain('02 96 00');
   });
 
   it('without a training status the ramp starts as before', async () => {

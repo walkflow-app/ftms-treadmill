@@ -453,7 +453,7 @@ export class SpeedGovernor {
       if (this.stopCount !== stops || !this.coasting) return;
       this.newRun();
       const m = this.measured;
-      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH) {
+      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH && !this.countdown) {
         this.moving = true;
         this.pump();
       }
@@ -464,10 +464,14 @@ export class SpeedGovernor {
   /**
    * Training Status "Pre-Workout" (0x0e): the start countdown. A belt that is not counted as moving yet stays so, however fast
    * it is reported, until another status comes or COUNTDOWN_MAX_MS has passed; then the held target is approached from what
-   * the belt does. Only holds back, never sends. Ignored while the belt already counts as moving (an echo mid-run).
+   * the belt does. Only holds back, never sends. Ignored while the belt counts as moving or was seen running since the last reset (an echo mid-run).
    */
   noteCountdown() {
     if (this.moving === true || this.countdown) return;
+    // A belt seen running (a fresh moving reading, or a confirmed speed since the last reset) is not at the start of a run: a 0e
+    // then is no countdown, and holding would delay a lowered limit. After a Start both are empty (reset) when the 0e comes.
+    const m = this.measured;
+    if (this.confirmed || (m && this.deps.now() - m.at < this.opts.freshMs && m.kmh >= MOVING_KMH)) return;
     this.countdown = true;
     this.moving = false;
     this.countdownTimer = setTimeout(() => this.endCountdown(), COUNTDOWN_MAX_MS);
