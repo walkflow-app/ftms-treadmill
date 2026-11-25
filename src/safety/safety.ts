@@ -130,6 +130,8 @@ export class SpeedGovernor {
   private coasting = false;
   /** While coasting: when the readings below STANDING_KMH began (none above it since); null: the last reading was above */
   private standingSince: number | null = null;
+  /** While coasting: the first reading of a possible steady run (at or above MOVING_KMH); null: none */
+  private runFirst: { kmh: number; at: number } | null = null;
   private stopCount = 0;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
@@ -206,10 +208,23 @@ export class SpeedGovernor {
     // standing ends the wait; from then on a belt that moves is a new run (a Start, or a belt started on the treadmill).
     // Standing is confirmed like a speed: readings below STANDING_KMH at least CONFIRM_MS apart with none above in between,
     // so one spurious 0.0 during the coast-down (#49) does not end the wait
+    // The wait also ends when the belt is seen running steady: two readings at or above MOVING_KMH, at least CONFIRM_MS apart,
+    // within maxStep of each other, the second not lower than the first. A belt that coasts down reads lower every second, so
+    // it never qualifies; a belt restarted on the console does, even if no reading below STANDING_KMH and no "started" came.
     if (this.coasting) {
       if (kmh >= STANDING_KMH) this.standingSince = null;
       else if (this.standingSince === null) this.standingSince = at;
       else if (at - this.standingSince >= CONFIRM_MS) { this.coasting = false; this.standingSince = null; }
+      if (this.coasting) {
+        if (kmh < MOVING_KMH) this.runFirst = null;
+        else if (this.runFirst === null || at - this.runFirst.at > this.opts.freshMs || Math.abs(kmh - this.runFirst.kmh) > this.maxStep + EPS) {
+          this.runFirst = { kmh, at };
+        } else if (at - this.runFirst.at >= CONFIRM_MS) {
+          if (kmh >= this.runFirst.kmh - EPS) { this.coasting = false; this.standingSince = null; }
+          else this.runFirst = { kmh, at }; // slower than a second ago: it slows down, compare from here
+        }
+      }
+      if (!this.coasting) this.runFirst = null;
     }
     const was = this.moving;
     this.moving = !this.coasting && kmh >= MOVING_KMH;
@@ -370,36 +385,27 @@ export class SpeedGovernor {
     this.last = null;
   }
 
-  /** A new run begins (Start, a Machine Status "started"): the belt is no longer waited for to stand. */
+  /**
+   * A new run begins (a Start that went out): the belt is no longer waited for to stand. A Machine Status "started" does not
+   * call this: the wait ends only on what was observed (standing, or steady running), never on a message alone (#25).
+   */
   newRun() {
     this.coasting = false;
     this.standingSince = null;
-  }
-
-  /**
-   * The treadmill reports Machine Status "started". While the belt coasts down after a stop this is a new run only once
-   * standing is confirmed (readings below STANDING_KMH, the first at least CONFIRM_MS ago, none above since): a late or
-   * mistaken "started" while the belt still reports a speed, after one spurious 0.0 (#49), or before anything was measured
-   * does not end the wait (#25). A treadmill that goes silent at a standstill is confirmed by the time since its first
-   * reading below STANDING_KMH; one that reported none since the stop keeps the wait until a new run begins (fail-safe).
-   * Accepted window: one spurious 0.0, then no reading for CONFIRM_MS or more (a gap of the connection), then a late
-   * "started" ends the wait although the belt may still coast down; a reading in the gap would have prevented it. It needs
-   * three faults at once and is checked on a treadmill (does a reading below 0.1 come before "started"?).
-   */
-  startedReported() {
-    if (!this.coasting) return;
-    if (this.standingSince !== null && this.deps.now() - this.standingSince >= CONFIRM_MS) this.newRun();
+    this.runFirst = null;
   }
 
   /**
    * Additionally forget the last command and measured value (after stop, start, disconnect).
    * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (readings below STANDING_KMH
-   * at least CONFIRM_MS apart, none above in between) or a new run begins (reset without afterStop, newRun).
+   * at least CONFIRM_MS apart, none above in between), the belt runs steady (see noteMeasured) or a new run begins (reset
+   * without afterStop, newRun).
    */
   reset(afterStop = false) {
     if (afterStop) this.stopCount++;
     this.coasting = afterStop;
     this.standingSince = null;
+    this.runFirst = null;
     this.cancel();
     this.last = null;
     this.measured = null;

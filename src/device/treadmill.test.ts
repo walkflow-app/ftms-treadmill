@@ -930,23 +930,26 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(setSpeeds(dev)).not.toEqual([]);
   });
 
-  it('a lowered limit is not sent while the hold is stuck on a running belt; stop() and start() are the way out', async () => {
+  it('a belt restarted on the console without a reading below 0.1 and without started: once it runs steady a lowered limit is sent', async () => {
     const { tm, dev } = await coasting('stop');
     tm.setLimits({ speedLimit: 6 });
     dev.speed(0); // one 0.0, then the treadmill is quiet and is restarted on its own console without a "started"
     clock += 10_000;
     for (const kmh of [4, 4, 4]) { dev.speed(kmh); clock += 1500; }
+    dev.writes = [];
     tm.setLimits({ speedLimit: 3 });
     for (const kmh of [4, 4]) { dev.speed(kmh); clock += 1500; }
     await flush();
-    expect(setSpeeds(dev)).toEqual([]); // documented in docs/API.md (setSpeed, setLimits): nothing is sent during the hold
-    await tm.stop();
-    for (const kmh of [2, 0]) { dev.speed(kmh); clock += 1000; }
-    dev.speed(0); // standing confirmed: the wait ends
-    clock += 6000;
-    dev.writes = [];
-    expect(await tm.start()).toBe(true);
-    expect(setSpeeds(dev)).toEqual(['02 64 00']);
+    expect(setSpeeds(dev)).toEqual(['02 2c 01']); // 3.0 in one command, as before the hold existed (promise 2)
+  });
+
+  it('a belt that only coasts down (3.5, 3.0, 2.5, 2.0) never counts as steady: nothing is sent', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [3.5, 3, 2.5, 2]) { dev.speed(kmh); clock += 1000; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
   });
 
   it('a late Machine Status started while the belt still coasts down does not end the wait', async () => {
@@ -982,12 +985,13 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(tm.state.target).toBe(5);
   });
 
-  it('a belt that stands and is started on the treadmill is a new run: the held speed is ramped', async () => {
+  it('a belt that stands (two readings below 0.1, 1 s apart) and is started on the treadmill is a new run: the held speed is ramped', async () => {
     const { tm, dev } = await coasting('stop');
     dev.speed(3.5);
     tm.setSpeed(5);
     dev.speed(0);
-    clock += 1000; // standing for CONFIRM_MS, the treadmill reports nothing more
+    clock += 1000;
+    dev.speed(0); // standing confirmed
     dev.machineStatus(0x04);
     clock += 2000;
     dev.speed(1);

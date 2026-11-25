@@ -14,7 +14,6 @@ function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   } satisfies ReportsHost['phase'];
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
-    startedReported: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;
@@ -58,11 +57,11 @@ describe('Machine Status', () => {
     expect(r.host.ended).not.toHaveBeenCalled();
   });
 
-  it('started: the belt counts as started, and the governor decides whether the wait after a stop ends', () => {
+  it('started: the belt counts as started; the governor is not told, its wait after a stop ends only on readings', () => {
     const r = rig();
     r.reports.machineStatus(dv(0x04));
     expect(r.session.beltStarted).toBe(true);
-    expect(r.governor.startedReported).toHaveBeenCalledOnce();
+    expect(r.governor.reset).not.toHaveBeenCalled();
   });
 
   it('control lost: remembered, so the next stop asks for control first', () => {

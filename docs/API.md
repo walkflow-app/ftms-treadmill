@@ -225,25 +225,25 @@ belt moves. Before Start, or while the belt still stands, the speed is held (`sp
 once it moves.
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
-end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`),
-also not a lowered limit (`setLimits`; the target still comes down, and the stop already brings the belt down):
+end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`).
+The wait ends only on what the belt is seen to do, never on a message alone:
 
-- **The wait ends** when the belt was seen standing: readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above
-  in between. One spurious 0.0 does not count.
-- **Or** when a new run begins: `start()` once its Start went out (a `start()` that fails keeps the wait), a raw Start once it went out (a stop sent or reported by the treadmill while the Start is being written keeps the wait, and `start()` then returns `false`), or a Machine Status `started` that comes once the belt was seen
-  standing for 1 s. A `started` while the belt still reports a speed, right after a single 0.0, or before any reading
-  since the stop, does not count.
-- **After that** the speed asked for after the stop (with `setSpeed` during the coast-down) is ramped to as soon as the
-  belt moves. The stop itself clears `state.target`; without a new `setSpeed`, the speed asked for last is ramped to
-  again after `start()` ([promise 3](LIBRARY.md#what-the-library-promises)).
-- A treadmill that reports no standing belt and no confirmed `started` keeps the speed held until a new run begins or
-  the next connection: nothing is sent meanwhile, also not a lowered limit. This can happen when the belt is restarted on the treadmill without a
-  reading below 0.1 km/h first: `setSpeed` then gives `speed-held-until-moving` on a moving belt, and `start()` is refused
-  (`start-belt-moving`). **The way out:** `stop()`, then `start()`; the app can say so next to the notice.
-- So `speed-held-until-moving` can come while the belt visibly moves (coasting down, or in the case above). A text that
-  fits every case says that the speed is held and not sent yet ("5 km/h held for now"), not that it starts once the belt moves.
-- Accepted: one spurious 0.0, then no reading for 1 s or more, then a late `started` ends the wait although the belt may
-  still be slowing down (checked on a treadmill before a release).
+- **Standing:** readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above in between. One spurious 0.0 does
+  not count.
+- **Running steady:** two readings at or above `MOVING_KMH` (0.3 km/h), at least 1 s apart, within `maxStep` of each other,
+  the second not lower than the first. A belt that coasts down reads lower every second, so it never qualifies; a belt
+  restarted on the treadmill does, also when it reported no reading below `STANDING_KMH` and no `started`. From then on the
+  governor behaves as without a stop: a lowered limit (`setLimits`) is sent, a held speed is ramped to.
+- **A new run:** `start()` once its Start went out (a `start()` that fails keeps the wait), or a raw Start once it went out
+  (a stop sent or reported by the treadmill while the Start is being written keeps the wait, and `start()` then returns
+  `false`).
+- A Machine Status `started` alone does not end the wait, whatever the last reading was.
+- Meanwhile the speed asked for after the stop (with `setSpeed`) is held and ramped to once the wait has ended and the belt
+  moves. The stop itself clears `state.target`; without a new `setSpeed`, the speed asked for last is ramped to again after
+  `start()` ([promise 3](LIBRARY.md#what-the-library-promises)). A lowered limit is not sent while the wait lasts (the
+  target still comes down; the stop already brings the belt down).
+- `speed-held-until-moving` can come while the belt visibly moves (coasting down). A text that fits every case says that
+  the speed is held and not sent yet ("5 km/h held for now"), not that it starts once the belt moves.
 
 `source` says who asked: `'manual'` (default: a button, a key, a preset) or `'program'` (a workout or route). A program's
 speed is watched for a belt that stands still while `setProgramActive(true)` is set ([Standstill](LIBRARY.md#standstill)).
@@ -294,8 +294,8 @@ readings at least 1 s apart show the belt above it; otherwise the target (at mos
 most `maxStep` from the last command, and the limit is sent in one command as soon as two readings at least 1 s apart show
 the belt above it. A limit above 6 km/h needs
 `limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. While the speed is
-held after a stop (see `setSpeed`), a lowered limit is not sent either (the target still comes down); if the belt runs
-then, `stop()` and `start()` end the hold. A limit that is not
+held after a stop and the belt still coasts down (see `setSpeed`), a lowered limit is not sent either (the target still
+comes down); once the belt stands or runs steady, it is sent as above. A limit that is not
 a finite number is ignored, and the one in force stays.
 
 ```ts
