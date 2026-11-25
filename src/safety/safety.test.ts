@@ -137,6 +137,18 @@ describe('SpeedGovernor', () => {
       expect(gov.holding).toBe(true);
     });
 
+    it('counts every stop (reset(true)), so a Start can see one came in while it was written; other resets do not count', () => {
+      const { gov } = make();
+      const before = gov.stops;
+      gov.reset();
+      gov.newRun();
+      expect(gov.stops).toBe(before);
+      gov.reset(true);
+      expect(gov.stops).toBe(before + 1);
+      gov.reset(true);
+      expect(gov.stops).toBe(before + 2);
+    });
+
     it('a belt seen standing (two readings below 0.1, 1 s apart) is a new run once it moves again', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);

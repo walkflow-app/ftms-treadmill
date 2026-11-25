@@ -873,6 +873,48 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(tm.state.target).toBe(5);
   });
 
+  it.each([[[0x03]], [[0x02, 0x01]], [[0x02, 0x02]]])(
+    'a stop the treadmill reports (%j) while a raw Start is on its way keeps the wait: 3.5, 2.5, 1.5 send nothing', async report => {
+      const { tm, dev } = await coasting('stop');
+      let release!: () => void;
+      dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+      const raw = tm.sendRaw([0x07], { confirmed: true });
+      await flush();
+      dev.machineStatus(...report);
+      tm.setSpeed(5);
+      release();
+      await raw;
+      dev.writes = [];
+      for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
+  it.each([[[0x03]], [[0x02, 0x01]], [[0x02, 0x02]]])(
+    'a stop the treadmill reports (%j) while start() sends Start keeps the wait: 3.5, 2.5, 1.5 send nothing', async report => {
+      const { tm, dev } = await coasting('stop');
+      dev.speed(0);
+      tm.setSpeed(5);
+      let release: (() => void) | undefined;
+      dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+      const started = tm.start();
+      for (let i = 0; i < 50; i++) {
+        if (release) break;
+        await flush();
+      }
+      expect(release).toBeDefined();
+      dev.machineStatus(...report);
+      release!();
+      expect(await started).toBe(false);
+      dev.writes = [];
+      tm.setSpeed(5); // asked for again after the overtaken start
+      for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
   it('a raw Start without a Stop in between still ends the wait', async () => {
     const { tm, dev } = await coasting('stop');
     let release!: () => void;

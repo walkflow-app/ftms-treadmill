@@ -145,9 +145,13 @@ export function setupBelt(host: BeltHost) {
       host.notice({ code: 'start-speed-failed' });
       return false;
     }
+    // A stop the treadmill reports (stopped, paused, safety key) does not bump epoch (that would end the attempts of a Stop
+    // being sent); the governor counts it. One reported before this point is let through (an echo of an earlier stop, #28 F)
+    const stops = governor.stops;
     const b = await c.send(cmdStart());
-    // A stop that came in while Start was on its way was sent after it, and the belt is its business now
-    if (epoch !== mine) return false;
+    // A stop that came in while Start was on its way (sent after it, or reported by the treadmill) owns the belt now: the wait
+    // after a stop is kept, so the readings of the decelerating belt do not count as moving (#25)
+    if (epoch !== mine || governor.stops !== stops) return false;
     if (b) {
       session.beltStarted = true;
       session.stopSentWhileRunning = false;

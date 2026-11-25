@@ -458,11 +458,13 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       governor.reset(governor.afterStop);
       newRun();
       const mine = belt.epoch();
+      const stops = governor.stops;
       const ok = await c.send(data);
-      if (ok) {
+      // A stop or pause that came in while the Start was on its way (sent, or reported by the treadmill: stopped, paused,
+      // safety key) keeps the wait, and the belt is not counted as started: it coasts down (#25)
+      if (ok && belt.epoch() === mine && governor.stops === stops) {
         session.beltStarted = true;
-        // A stop or pause that came in while the Start was on its way keeps the wait: the belt coasts down (#25)
-        if (belt.epoch() === mine) governor.newRun();
+        governor.newRun();
       }
       return { action: 'sent', ok };
     }

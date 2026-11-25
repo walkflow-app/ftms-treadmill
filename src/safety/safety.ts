@@ -130,6 +130,7 @@ export class SpeedGovernor {
   private coasting = false;
   /** While coasting: when the readings below STANDING_KMH began (none above it since); null: the last reading was above */
   private standingSince: number | null = null;
+  private stopCount = 0;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -145,6 +146,11 @@ export class SpeedGovernor {
   get holding() { return this.moving === false && this._target !== null; }
   /** A stop was sent or reported and the belt was not seen standing since, and no new run began */
   get afterStop() { return this.coasting; }
+  /**
+   * Counts every reset(true) (a stop sent, or reported by the treadmill): a Start that finds a higher number after its write
+   * was overtaken by a stop and must not end the wait with newRun() (#25)
+   */
+  get stops() { return this.stopCount; }
   get currentRange(): SpeedRange { return { ...this.range }; }
 
   msSinceLastCommand(): number {
@@ -391,6 +397,7 @@ export class SpeedGovernor {
    * at least CONFIRM_MS apart, none above in between) or a new run begins (reset without afterStop, newRun).
    */
   reset(afterStop = false) {
+    if (afterStop) this.stopCount++;
     this.coasting = afterStop;
     this.standingSince = null;
     this.cancel();
