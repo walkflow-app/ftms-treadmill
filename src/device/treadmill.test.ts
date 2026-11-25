@@ -764,3 +764,249 @@ describe('raw commands (experiment console)', () => {
     expect(await tm.sendRaw([0x00])).toEqual({ action: 'not-connected' });
   });
 });
+
+describe('nothing is set while the belt coasts down after a stop (#25)', () => {
+  const flush = () => new Promise(r => setTimeout(r, 5));
+  const setSpeeds = (dev: FakeTreadmill) => dev.writes.filter(w => w.startsWith('02'));
+
+  async function coasting(how: 'stop' | 'pause' | 'machine-stopped' | 'safety-key' | 'raw-stop') {
+    const r = await rig();
+    r.dev.speed(4);
+    r.tm.setSpeed(4);
+    clock += 10_000;
+    await flush();
+    if (how === 'stop') await r.tm.stop();
+    else if (how === 'pause') await r.tm.pause();
+    else if (how === 'raw-stop') await r.tm.sendRaw([0x08, 0x01]);
+    else if (how === 'machine-stopped') r.dev.machineStatus(0x02, 0x01);
+    else r.dev.machineStatus(0x03);
+    r.dev.writes = [];
+    return r;
+  }
+
+  it.each(['stop', 'pause', 'machine-stopped', 'safety-key', 'raw-stop'] as const)(
+    'after %s, a speed asked for while the belt decelerates is held, not written', async how => {
+      const { tm, dev } = await coasting(how);
+      for (const kmh of [3.5, 2.5, 1.5, 0.6]) { dev.speed(kmh); tm.setSpeed(5); clock += 2000; }
+      clock += 5000;
+      dev.speed(0.2);
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
+  it('a speed held through the coast-down goes out only after Start and a moving belt', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0);
+    clock += 5000;
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    await tm.start();
+    expect(setSpeeds(dev)).toEqual(['02 64 00']); // only the start speed
+    dev.writes = [];
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
+  });
+
+  it('a start that fails during the coast-down does not end the wait: 3.5, 0, start fails, 2.5, 2, 1.5', async () => {
+    const { tm, dev, notices } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0); // one spurious 0.0 (#49): Start is not refused as on a moving belt
+    dev.writeImpl = async d => { if (d[0] === 0x02) throw new Error('GATT busy'); };
+    expect(await tm.start()).toBe(false);
+    expect(notices).toContainEqual({ code: 'start-speed-failed' });
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    tm.setSpeed(5); // asked for again after the failed start
+    for (const kmh of [2.5, 2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a raw Start whose write fails during the coast-down does not end the wait: 3.5, raw Start fails, 2.5, 2, 1.5', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    dev.writeImpl = async d => { if (d[0] === 0x07) throw new Error('GATT busy'); };
+    expect(await tm.sendRaw([0x07], { confirmed: true })).toEqual({ action: 'sent', ok: false });
+    dev.writeImpl = async () => {};
+    dev.writes = [];
+    tm.setSpeed(5);
+    for (const kmh of [2.5, 2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a raw Start that went out during the coast-down is a new run: the held speed is ramped once the belt moves', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    expect(await tm.sendRaw([0x07], { confirmed: true })).toEqual({ action: 'sent', ok: true });
+    tm.setSpeed(5);
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).not.toEqual([]);
+  });
+
+  it('a Stop that comes in while a raw Start is on its way keeps the wait: Start 07 held, 08 01, write released, 3.5, 2.5, 1.5', async () => {
+    const { tm, dev } = await coasting('stop');
+    let release!: () => void;
+    dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+    const raw = tm.sendRaw([0x07], { confirmed: true });
+    await flush();
+    const stopped = tm.sendRaw([0x08, 0x01]);
+    tm.setSpeed(5);
+    release();
+    await raw;
+    await stopped;
+    dev.writes = [];
+    for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it.each([[[0x03]], [[0x02, 0x01]], [[0x02, 0x02]]])(
+    'a stop the treadmill reports (%j) while a raw Start is on its way keeps the wait: 3.5, 2.5, 1.5 send nothing', async report => {
+      const { tm, dev } = await coasting('stop');
+      let release!: () => void;
+      dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+      const raw = tm.sendRaw([0x07], { confirmed: true });
+      await flush();
+      dev.machineStatus(...report);
+      tm.setSpeed(5);
+      release();
+      await raw;
+      dev.writes = [];
+      for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
+  it.each([[[0x03]], [[0x02, 0x01]], [[0x02, 0x02]]])(
+    'a stop the treadmill reports (%j) while start() sends Start keeps the wait: 3.5, 2.5, 1.5 send nothing', async report => {
+      const { tm, dev } = await coasting('stop');
+      dev.speed(0);
+      tm.setSpeed(5);
+      let release: (() => void) | undefined;
+      dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+      const started = tm.start();
+      for (let i = 0; i < 50; i++) {
+        if (release) break;
+        await flush();
+      }
+      expect(release).toBeDefined();
+      dev.machineStatus(...report);
+      release!();
+      expect(await started).toBe(false);
+      dev.writes = [];
+      tm.setSpeed(5); // asked for again after the overtaken start
+      for (const kmh of [3.5, 2.5, 1.5]) { clock += 2000; dev.speed(kmh); }
+      await flush();
+      expect(setSpeeds(dev)).toEqual([]);
+      expect(tm.state.target).toBe(5);
+    });
+
+  it('a raw Start without a Stop in between still ends the wait', async () => {
+    const { tm, dev } = await coasting('stop');
+    let release!: () => void;
+    dev.writeImpl = d => (d[0] === 0x07 ? new Promise(r => { release = r; }) : Promise.resolve());
+    const raw = tm.sendRaw([0x07], { confirmed: true });
+    await flush();
+    tm.setSpeed(5);
+    release();
+    await raw;
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).not.toEqual([]);
+  });
+
+  it('a belt restarted on the console without a reading below 0.1 and without started: once it runs again a lowered limit is sent', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setLimits({ speedLimit: 6 });
+    dev.speed(0); // one 0.0, then the treadmill is quiet and is restarted on its own console without a "started"
+    clock += 10_000;
+    for (const kmh of [1, 2, 3, 4, 4]) { dev.speed(kmh); clock += 1500; } // it runs up from standing: the readings rise
+    dev.writes = [];
+    tm.setLimits({ speedLimit: 3 });
+    for (const kmh of [4, 4]) { dev.speed(kmh); clock += 1500; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual(['02 2c 01']); // 3.0 in one command, as before the hold existed (promise 2)
+  });
+
+  it('a belt that only coasts down (3.5, 3.0, 2.5, 2.0) never counts as steady: nothing is sent', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [3.5, 3, 2.5, 2]) { dev.speed(kmh); clock += 1000; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a stopping belt that reports its old speed for a while and holds a value (4, 4, 4, 3, 3, 2 … 0) never counts as running: nothing is sent', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [4, 4, 4, 3, 3, 3, 2, 1, 0.5]) { dev.speed(kmh); clock += 1100; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a late Machine Status started while the belt still coasts down does not end the wait', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.machineStatus(0x04); // a Start answered late, or sent by mistake: the belt still decelerates
+    for (const kmh of [2.5, 1.5, 0.6]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a late started after one spurious 0.0 during the coast-down does not end the wait (#49)', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [3.5, 0, 2.5]) { dev.speed(kmh); clock += 600; }
+    dev.machineStatus(0x04);
+    for (const kmh of [2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a started right after one spurious 0.0 does not end the wait: 3.5, 0, started, 2.5, 2, 1.5 (#49)', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [3.5, 0]) { dev.speed(kmh); clock += 300; }
+    dev.machineStatus(0x04);
+    for (const kmh of [2.5, 2, 1.5]) { clock += 2000; dev.speed(kmh); }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a belt that stands (two readings below 0.1, 1 s apart) and is started on the treadmill is a new run: the held speed is ramped', async () => {
+    const { tm, dev } = await coasting('stop');
+    dev.speed(3.5);
+    tm.setSpeed(5);
+    dev.speed(0);
+    clock += 1000;
+    dev.speed(0); // standing confirmed
+    dev.machineStatus(0x04);
+    clock += 2000;
+    dev.speed(1);
+    clock += 2000;
+    dev.speed(1);
+    await flush();
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // the first ramp step: 1.0 + maxStep 0.5 (promise 2)
+  });
+});

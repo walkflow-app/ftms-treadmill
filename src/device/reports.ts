@@ -53,7 +53,7 @@ export function setupReports(host: ReportsHost) {
       governor.noteMeasured(r.speed);
       if (standstill.feed(r.speed, now) && host.programActive()) {
         host.ended('standstill');
-        governor.reset();
+        governor.reset(true);
       }
     }
     host.data(r);
@@ -69,10 +69,12 @@ export function setupReports(host: ReportsHost) {
       session.beltStarted = false;
       host.ended(end);
       // Also withdraws a speed command of the ramp that still waits to be written (governor.reset, SpeedGovernor.pump)
-      governor.reset();
+      governor.reset(true); // the belt coasts down: nothing is sent until it stands and a new run begins
       standstill.disarm();
     } else if (e.kind === 'started') {
       session.beltStarted = true;
+      // No new run for the governor: its wait after a stop ends only on what the belt does (standing, or running steady),
+      // never on this message alone, so a held speed is not ramped onto a decelerating belt (#25)
     } else if (e.kind === 'control-lost') {
       session.controlLost = true;
     }

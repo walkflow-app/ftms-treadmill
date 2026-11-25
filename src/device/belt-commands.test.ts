@@ -28,6 +28,8 @@ function rig(opts: { ok?: boolean | ((hexBytes: string) => boolean | Promise<boo
     target: opts.target ?? null,
     request: vi.fn((kmh: number) => { calls.push(`governor request ${kmh}`); return kmh; }),
     reset: vi.fn(() => calls.push('governor reset')),
+    afterStop: false,
+    newRun: vi.fn(() => calls.push('governor new run')),
     startSpeed: vi.fn(async () => { calls.push('governor startSpeed'); return opts.startSpeedOk ?? true; }),
   } as unknown as SpeedGovernor;
   const standstill = { disarm: vi.fn(() => calls.push('standstill disarm')) } as unknown as StandstillDetector;
@@ -194,7 +196,7 @@ describe('start', () => {
   it('takes control, sets the lowest speed and only then starts, and tells the banner', async () => {
     const r = rig();
     expect(await r.belt.start()).toBe(true);
-    expect(r.calls).toEqual(['governor reset', 'standstill disarm', 'send 00', 'governor startSpeed', 'send 07', 'banner start']);
+    expect(r.calls).toEqual(['governor reset', 'standstill disarm', 'send 00', 'governor startSpeed', 'send 07', 'banner start', 'governor new run']);
     expect(r.session.beltStarted).toBe(true);
   });
 
@@ -332,7 +334,7 @@ describe('start', () => {
   it('keeps a speed chosen while the belt stood: it asks for it again after Start, for the governor to ramp up to', async () => {
     const r = rig({ target: 5 });
     expect(await r.belt.start()).toBe(true);
-    expect(r.calls).toEqual(['governor reset', 'standstill disarm', 'send 00', 'governor startSpeed', 'send 07', 'banner start', 'governor request 5']);
+    expect(r.calls).toEqual(['governor reset', 'standstill disarm', 'send 00', 'governor startSpeed', 'send 07', 'banner start', 'governor new run', 'governor request 5']);
   });
 
   it('without a target, asks again for the speed asked for before the stop', async () => {

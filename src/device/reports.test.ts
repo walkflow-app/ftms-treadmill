@@ -47,6 +47,7 @@ describe('Machine Status', () => {
     expect(r.session.beltStarted).toBe(false);
     expect(r.host.ended).toHaveBeenCalledWith(reason);
     expect(r.calls).toEqual(['machine status', 'phase stop', 'ended', 'governor reset', 'standstill disarm']);
+    expect(r.governor.reset).toHaveBeenCalledWith(true); // the belt coasts down: nothing is sent until it stands
   });
 
   it('hands every status on, with its bytes, also one it does not know', () => {
@@ -56,10 +57,11 @@ describe('Machine Status', () => {
     expect(r.host.ended).not.toHaveBeenCalled();
   });
 
-  it('started: the belt counts as started', () => {
+  it('started: the belt counts as started; the governor is not told, its wait after a stop ends only on readings', () => {
     const r = rig();
     r.reports.machineStatus(dv(0x04));
     expect(r.session.beltStarted).toBe(true);
+    expect(r.governor.reset).not.toHaveBeenCalled();
   });
 
   it('control lost: remembered, so the next stop asks for control first', () => {
@@ -172,6 +174,7 @@ describe('Treadmill Data', () => {
     r.reports.data({ speed: 0 });
     expect(r.host.ended).toHaveBeenCalledWith('standstill');
     expect(r.calls).toEqual(['ended', 'governor reset', 'data']);
+    expect(r.governor.reset).toHaveBeenCalledWith(true); // the belt may still coast down
   });
 
   it('standing still without a program ends nothing', () => {
