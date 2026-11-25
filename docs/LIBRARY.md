@@ -161,7 +161,10 @@ one of them is a `safety` commit and at least a minor version.
    is forgotten, no `ended` and no phase change yet: those wait for the Machine Status). Whether `0f` comes in other cases is
    not known. A wrong guess never makes the belt faster, but it is a wait like any other: while the belt keeps running at
    a steady speed it shows neither standing nor rising readings, so a lower speed asked for and a lowered limit are held too
-   (not sent) until the person presses Stop or the next start begins a new run. A speed asked for meanwhile is held (`speed-held-until-moving`). The wait ends when the belt is seen standing
+   (not sent) until a stop report or a Stop sent by the app ends it, or the belt is seen standing or rising. On a belt that
+   keeps running `start()` is refused (`start-belt-moving`), so there only Stop (or a stop report) ends this hold.
+   A speed asked for meanwhile is held (`speed-held-until-moving`).
+   The wait ends when the belt is seen standing
    (readings below `STANDING_KMH` at least `CONFIRM_MS` apart, none above in between), when it is seen running again (three
    or more readings at or above `MOVING_KMH` over at least 3 s, none lower than the one before, the latest at least
    0.5 km/h above the first), or when a new run begins (`start()` or a raw Start once it went out, with no stop sent or

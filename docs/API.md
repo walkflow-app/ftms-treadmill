@@ -452,7 +452,7 @@ off();
 | `data` | [`TreadmillData`](#treadmilldata) | the treadmill reports (about once a second) |
 | `heartRate` | `number` (bpm) | the Heart Rate service reports |
 | `machineStatus` | `{ event: MachineEvent \| null; hex: string }` | the treadmill reports a change ([`MachineEvent`](#machineevent)) |
-| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`). `Post-Workout` (`0f`) also counts as the hint of a stop: the ramp is forgotten and nothing is sent until the wait after a stop ends (see `setSpeed`); no `ended` comes from it. If the belt keeps running steadily the wait lasts until Stop or the next start |
+| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`). `Post-Workout` (`0f`) also counts as the hint of a stop: the ramp is forgotten and nothing is sent until the wait after a stop ends (see `setSpeed`); no `ended` comes from it. If the belt keeps running steadily, `start()` is refused (`start-belt-moving`), so only Stop (or a stop report) ends the wait |
 | `controlResponse` | [`ControlPointResponse`](#controlpointresponse) | every answer to a command, also an OK |
 | `notice` | [`Notice`](#notices) | something worth telling the person or a log |
 | `log` | `string` | protocol lines (bytes sent, an answer that could not be read); not for people |

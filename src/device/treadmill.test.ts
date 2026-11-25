@@ -1085,8 +1085,8 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     expect(setSpeeds(dev)).toEqual(['02 fa 00']);
   });
 
-  it('a hint without a stop holds a steady belt: a lower speed and a lowered limit are not sent until Stop or a new run (documented, promise 7)', async () => {
-    const { tm, dev } = await rig({ speedLimit: 6 });
+  it('a hint without a stop holds a steady belt: a lower speed and a lowered limit are not sent until Stop or a stop report (documented, promise 7)', async () => {
+    const { tm, dev, notices } = await rig({ speedLimit: 6 });
     dev.speed(5);
     tm.setSpeed(5);
     await tick(10_000);
@@ -1097,5 +1097,6 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     tm.setLimits({ speedLimit: 3 });
     await tick(10_000);
     expect(setSpeeds(dev)).toEqual([]);
+    expect(notices).toContainEqual({ code: 'speed-held-until-moving', kmh: 2 });
   });
 });
