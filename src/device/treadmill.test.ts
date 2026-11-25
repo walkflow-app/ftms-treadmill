@@ -40,8 +40,8 @@ class FakeTreadmill implements BleDevice {
   /** The treadmill reports its speed */
   speed(kmh: number) { this.subs.get('1826/2acd')!(dataView(buildTreadmillData({ speed: kmh }))); }
   machineStatus(...bytes: number[]) { this.subs.get('1826/2ada')!(dataView(bytes)); }
-  /** The treadmill reports its training status (01 + status byte) */
-  trainingStatus(status: number) { this.subs.get('1826/2ad3')!(dataView([0x00, status])); }
+  /** The treadmill reports its training status (flags 01 + status byte, as the sPad 500 sends it) */
+  trainingStatus(status: number) { this.subs.get('1826/2ad3')!(dataView([0x01, status])); }
   /** The treadmill answers a command */
   answer(op: number, result: number) { this.subs.get('1826/2ad9')!(dataView([0x80, op, result])); }
 }
@@ -1083,5 +1083,19 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     for (const s of [0x01, 0x0d, 0x0e]) dev.trainingStatus(s);
     await tick(2000);
     expect(setSpeeds(dev)).toEqual(['02 fa 00']);
+  });
+
+  it('a hint without a stop holds a steady belt: a lower speed and a lowered limit are not sent until Stop or a new run (documented, promise 7)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 6 });
+    dev.speed(5);
+    tm.setSpeed(5);
+    await tick(10_000);
+    dev.writes = [];
+    dev.trainingStatus(0x0f);
+    for (let i = 0; i < 4; i++) { dev.speed(5); await tick(2000); }
+    tm.setSpeed(2);
+    tm.setLimits({ speedLimit: 3 });
+    await tick(10_000);
+    expect(setSpeeds(dev)).toEqual([]);
   });
 });

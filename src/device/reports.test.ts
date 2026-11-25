@@ -189,7 +189,7 @@ describe('Training Status (#39)', () => {
   it('Post-Workout is the hint of a stop: the governor waits as after a stop, nothing is ended or changed on the belt', () => {
     const r = rig({ program: true });
     r.session.beltStarted = true;
-    r.reports.trainingStatus(dv(0x00, 0x0f));
+    r.reports.trainingStatus(dv(0x01, 0x0f));
     expect(r.governor.reset).toHaveBeenCalledWith(true);
     expect(r.host.ended).not.toHaveBeenCalled();
     expect(r.session.beltStarted).toBe(true);
