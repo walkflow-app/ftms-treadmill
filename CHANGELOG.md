@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.4.0](https://github.com/walkflow-app/ftms-treadmill/compare/v0.3.0...v0.4.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **governor:** one implausible speed reading no longer lifts the ramp base ([#44](https://github.com/walkflow-app/ftms-treadmill/issues/44))
+* **stop:** a Stop is not overtaken by Start, raw Stop is a Stop, connect() re-entrant, refused control ([#52](https://github.com/walkflow-app/ftms-treadmill/issues/52))
+* **start:** no Start when the start speed was not set, nothing on a moving belt ([#43](https://github.com/walkflow-app/ftms-treadmill/issues/43))
+
+### Safety
+
+* **governor:** a ramp step waiting in the write queue is withdrawn when the limit was lowered below it ([#54](https://github.com/walkflow-app/ftms-treadmill/issues/54)) ([34c260e](https://github.com/walkflow-app/ftms-treadmill/commit/34c260e459b118e43f089c2358f9b5502ee160e4))
+* **governor:** no ramp step during the treadmill's start countdown ([#63](https://github.com/walkflow-app/ftms-treadmill/issues/63)) ([7442979](https://github.com/walkflow-app/ftms-treadmill/commit/7442979ddd4adfcb4b896dc3a821f92584f9fdad))
+* **governor:** nothing is sent while the belt coasts down after a stop ([#56](https://github.com/walkflow-app/ftms-treadmill/issues/56)) ([24cadf1](https://github.com/walkflow-app/ftms-treadmill/commit/24cadf11f313a1edad6ea120d8754a4fcf138b0b))
+* **governor:** one implausible speed reading no longer lifts the ramp base ([#44](https://github.com/walkflow-app/ftms-treadmill/issues/44)) ([96a97d1](https://github.com/walkflow-app/ftms-treadmill/commit/96a97d1c8fb7507022efe492b2a854c1a5b2d246))
+* **governor:** Training Status 0f starts the wait after a stop at once ([#60](https://github.com/walkflow-app/ftms-treadmill/issues/60)) ([11f6746](https://github.com/walkflow-app/ftms-treadmill/commit/11f674601a166336d72a3b0c53de9408073970f9))
+* **start:** no Start when the start speed was not set, nothing on a moving belt ([#43](https://github.com/walkflow-app/ftms-treadmill/issues/43)) ([607b14f](https://github.com/walkflow-app/ftms-treadmill/commit/607b14f298d319779527b03d61efca289da6c490))
+* **stop:** a Stop is not overtaken by Start, raw Stop is a Stop, connect() re-entrant, refused control ([#52](https://github.com/walkflow-app/ftms-treadmill/issues/52)) ([04b65bc](https://github.com/walkflow-app/ftms-treadmill/commit/04b65bcf84e355a826273d055c31fefea2e50db1))
+
+
+### Fixes
+
+* **pipeline:** a failed review is started again once, and a handed-back pull request gets a new window ([#57](https://github.com/walkflow-app/ftms-treadmill/issues/57)) ([fb3d2b6](https://github.com/walkflow-app/ftms-treadmill/commit/fb3d2b6de4f09aac01b3abdf1cf437fa958c5829))
+* **pipeline:** port of walkflow[#121](https://github.com/walkflow-app/ftms-treadmill/issues/121) and [#122](https://github.com/walkflow-app/ftms-treadmill/issues/122), a conflict is solved before a kick and UNKNOWN waits ([#58](https://github.com/walkflow-app/ftms-treadmill/issues/58)) ([5cbdffe](https://github.com/walkflow-app/ftms-treadmill/commit/5cbdffed135b755bd08813043462f4512ee39075))
+
 ## [0.3.0](https://github.com/walkflow-app/ftms-treadmill/compare/v0.2.1...v0.3.0) (2026-11-22)
 
 
