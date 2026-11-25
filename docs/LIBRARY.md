@@ -130,7 +130,12 @@ one of them is a `safety` commit and at least a minor version.
 2. The speed changes by at most `maxStep` per command and not more often than every `RAMP_INTERVAL_MS`, counted from when
    the previous command was written. One exception: a lowered limit is sent in one command when (a) it is lowered
    to a value at or below the last command (an ordinary step down for the belt, no reading needed), or (b) two readings at
-   least 1 s apart show the belt above the new limit.
+   least 1 s apart show the belt above the new limit. A second exception to the exception: a lowered limit is not sent
+   while the wait after a stop lasts (promise 7), because a Set Speed to a belt that coasts down may start it again on
+   some treadmills (the open hardware question of #25). The target still comes down. The wait ends when the belt is seen
+   standing (readings below `STANDING_KMH`, at least `CONFIRM_MS` apart, none above in between) or running again (three or
+   more readings at or above `MOVING_KMH` over at least 3 s, none lower than the one before, the latest at least 0.5 km/h
+   above the first); a Machine Status `started` alone ends nothing.
 3. Before Start the lowest allowed speed is set, so a treadmill does not run up to the speed it last had. If that speed
    could not be set (the write failed, the limit leaves no allowed speed, or the treadmill refused it), no Start is sent:
    `start()` returns `false` with `start-speed-failed`. A treadmill that does not answer within a second (`SPEED_ANSWER_MS`) is let through, so one that gives no
@@ -150,6 +155,15 @@ one of them is a `safety` commit and at least a minor version.
    is sent. `ended` comes once per run of the belt: the
    treadmill reporting a stop the app already made forgets the ramp again but tells no second end; a start, the belt
    moving again, a program that begins or a new connection opens a new run.
+   After a stop of any kind the belt coasts down, and the governor sends nothing (no ramp step, no lowered limit) during
+   that wait. A speed asked for meanwhile is held (`speed-held-until-moving`). The wait ends when the belt is seen standing
+   (readings below `STANDING_KMH` at least `CONFIRM_MS` apart, none above in between), when it is seen running again (three
+   or more readings at or above `MOVING_KMH` over at least 3 s, none lower than the one before, the latest at least
+   0.5 km/h above the first), or when a new run begins (`start()` or a raw Start once it went out, with no stop sent or
+   reported while it was written, or a new connection). A Machine Status `started` alone does not end it. If the belt keeps
+   running although the stop was sent (every Stop attempt failed, or a late `stopped`), no such evidence comes: the wait
+   lasts until the next start, and a lowered limit is not sent then either, because a Set Speed during the coast-down may
+   start the belt again on some treadmills (the open hardware question of #25). That case is named here on purpose.
 8. No method throws during a session (only `connect`); a failed command is `false` plus a notice.
 
 ## Packaging

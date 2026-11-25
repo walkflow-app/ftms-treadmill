@@ -458,6 +458,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       governor.reset(governor.afterStop);
       newRun();
       const mine = belt.epoch();
+      // reset(true) raises this counter; it is read after the reset above, so only a stop during the write changes it
       const stops = governor.stops;
       const ok = await c.send(data);
       // A stop or pause that came in while the Start was on its way (sent, or reported by the treadmill: stopped, paused,
