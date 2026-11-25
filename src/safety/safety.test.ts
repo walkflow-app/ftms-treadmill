@@ -228,78 +228,86 @@ describe('SpeedGovernor', () => {
       expect(gov.holding).toBe(true);
     });
 
-    it('a belt that runs steady (two readings at or above 0.3, 1 s apart, within maxStep, not lower) ends the wait, with no reading below 0.1 seen', async () => {
+    it('a belt that runs again (3+ readings at or above 0.3 over 3 s, none lower, rising) ends the wait, with no reading below 0.1 seen', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(5);
       for (const kmh of [3.5, 0]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(300); } // restarted on the console
-      await vi.advanceTimersByTimeAsync(1000);
-      gov.noteMeasured(4);
-      await vi.advanceTimersByTimeAsync(1000);
+      for (const kmh of [1, 2, 3]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
       expect(sent).toEqual([]);
       gov.noteMeasured(4);
       await vi.advanceTimersByTimeAsync(0);
-      expect(sent).toEqual([[Date.now(), 4.5]]); // as before this change: a step from the confirmed 4.0
+      expect(sent).toEqual([[Date.now(), 4.5]]); // a step from the measured 4.0 (promise 2)
     });
 
-    it('two readings less than 1 s apart are not steady running', async () => {
+    it('the run must last 3 s: rising readings over 3 s end the wait, over 2.7 s they do not', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(5);
-      gov.noteMeasured(4);
-      await vi.advanceTimersByTimeAsync(500);
-      gov.noteMeasured(4);
+      for (const kmh of [1, 2, 3]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      gov.noteMeasured(3.5); // 3 s after the first
       await vi.advanceTimersByTimeAsync(0);
-      expect(sent).toEqual([]);
+      expect(sent.length).toBe(1);
+      const b = make();
+      b.gov.noteMeasured(4);
+      b.gov.reset(true);
+      b.gov.request(5);
+      for (const kmh of [1, 2, 3]) { b.gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(900); }
+      b.gov.noteMeasured(3.5); // 2.7 s after the first
+      await vi.advanceTimersByTimeAsync(0);
+      expect(b.sent).toEqual([]);
     });
 
-    it('two readings more than maxStep apart are not steady running', async () => {
+    it('equal readings after the stop (reporting lag: 4.0, 4.0, 4.0, 4.0 over 3 s) are not running again: nothing is sent', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(5);
-      gov.noteMeasured(3);
-      await vi.advanceTimersByTimeAsync(1000);
-      gov.noteMeasured(3.8);
-      await vi.advanceTimersByTimeAsync(0);
+      for (const kmh of [4, 4, 4, 4, 4]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
       expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
     });
 
-    it('a second reading lower than the first is a belt that slows down, not steady running; the comparison goes on from it', async () => {
+    it('lag and a plateau during the coast-down (4.0, 4.0, 3.0, 3.0, 2.0 … 0) send nothing', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(5);
-      for (const kmh of [3.5, 3.2, 3.0]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      for (const kmh of [4, 4, 3, 3, 3, 2, 2, 1, 0.5, 0]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1100); }
       expect(sent).toEqual([]);
-      gov.noteMeasured(3.0); // equal to the last one: now it holds steady
+      expect(gov.target).toBe(5);
+    });
+
+    it('a reading lower than the one before is a belt that slows down; the comparison goes on from it', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [3.5, 3.2, 3.0, 3.0, 3.0]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      expect(sent).toEqual([]); // 3.0 held for 2 s: a plateau, no rise
+      gov.noteMeasured(3.5); // rises, 3 s after the first 3.0
       await vi.advanceTimersByTimeAsync(0);
       expect(sent.length).toBe(1);
     });
 
-    it('a reading below 0.3 between two readings of a moving belt starts the comparison again', async () => {
+    it('a reading below 0.3 in a run of a moving belt starts the run again', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.request(5);
-      gov.noteMeasured(4);
-      await vi.advanceTimersByTimeAsync(600);
-      gov.noteMeasured(0.2);
-      await vi.advanceTimersByTimeAsync(600);
-      gov.noteMeasured(4);
-      await vi.advanceTimersByTimeAsync(0);
+      for (const kmh of [1, 2, 0.2, 3, 4]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
       expect(sent).toEqual([]);
     });
 
-    it('a lowered limit goes out in one command once the belt runs steady after a restart on the console', async () => {
+    it('a lowered limit goes out in one command once the belt runs again after a restart on the console', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
       gov.reset(true);
       gov.noteMeasured(0);
       await vi.advanceTimersByTimeAsync(300);
-      for (const kmh of [4, 4, 4]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      for (const kmh of [1, 2, 3, 4, 4]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
       gov.setRange({ min: 1, max: 3 });
       for (const kmh of [4, 4]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
       expect(sent.map(s => s[1])).toEqual([3]);

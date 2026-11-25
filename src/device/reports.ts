@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' |'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */

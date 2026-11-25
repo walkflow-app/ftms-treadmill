@@ -230,10 +230,14 @@ The wait ends only on what the belt is seen to do, never on a message alone:
 
 - **Standing:** readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above in between. One spurious 0.0 does
   not count.
-- **Running steady:** two readings at or above `MOVING_KMH` (0.3 km/h), at least 1 s apart, within `maxStep` of each other,
-  the second not lower than the first. A belt that coasts down reads lower every second, so it never qualifies; a belt
-  restarted on the treadmill does, also when it reported no reading below `STANDING_KMH` and no `started`. From then on the
+- **Running again:** three or more readings at or above `MOVING_KMH` (0.3 km/h) over at least 3 s, none lower than the one
+  before, the latest higher than the first. Equal readings are not enough: a stopping belt can report its old speed for a
+  while or hold one value as it slows down, but its readings do not rise. A belt restarted on the treadmill runs up from
+  standing, so its readings rise, also when it reported no reading below `STANDING_KMH` and no `started`. From then on the
   governor behaves as without a stop: a lowered limit (`setLimits`) is sent, a held speed is ramped to.
+- If none of these is seen (a belt restarted on the treadmill whose readings never rise, for example because the treadmill
+  reports nothing while it runs up), the speed stays held and a lowered limit is not sent; `stop()` and then `start()` end
+  the wait.
 - **A new run:** `start()` once its Start went out (a `start()` that fails keeps the wait), or a raw Start once it went out
   (a stop sent or reported by the treadmill while the Start is being written keeps the wait, and `start()` then returns
   `false`).
@@ -295,7 +299,7 @@ most `maxStep` from the last command, and the limit is sent in one command as so
 the belt above it. A limit above 6 km/h needs
 `limitConfirmed: true` **in the same call**: the confirmation belongs to the value it was given with. While the speed is
 held after a stop and the belt still coasts down (see `setSpeed`), a lowered limit is not sent either (the target still
-comes down); once the belt stands or runs steady, it is sent as above. A limit that is not
+comes down); once the belt stands or runs again, it is sent as above (`stop()` and then `start()` end the wait otherwise). A limit that is not
 a finite number is ignored, and the one in force stays.
 
 ```ts

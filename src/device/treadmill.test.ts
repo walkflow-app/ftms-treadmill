@@ -930,12 +930,12 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     expect(setSpeeds(dev)).not.toEqual([]);
   });
 
-  it('a belt restarted on the console without a reading below 0.1 and without started: once it runs steady a lowered limit is sent', async () => {
+  it('a belt restarted on the console without a reading below 0.1 and without started: once it runs again a lowered limit is sent', async () => {
     const { tm, dev } = await coasting('stop');
     tm.setLimits({ speedLimit: 6 });
     dev.speed(0); // one 0.0, then the treadmill is quiet and is restarted on its own console without a "started"
     clock += 10_000;
-    for (const kmh of [4, 4, 4]) { dev.speed(kmh); clock += 1500; }
+    for (const kmh of [1, 2, 3, 4, 4]) { dev.speed(kmh); clock += 1500; } // it runs up from standing: the readings rise
     dev.writes = [];
     tm.setLimits({ speedLimit: 3 });
     for (const kmh of [4, 4]) { dev.speed(kmh); clock += 1500; }
@@ -947,6 +947,15 @@ describe('nothing is set while the belt coasts down after a stop (#25)', () => {
     const { tm, dev } = await coasting('stop');
     tm.setSpeed(5);
     for (const kmh of [3.5, 3, 2.5, 2]) { dev.speed(kmh); clock += 1000; }
+    await flush();
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBe(5);
+  });
+
+  it('a stopping belt that reports its old speed for a while and holds a value (4, 4, 4, 3, 3, 2 … 0) never counts as running: nothing is sent', async () => {
+    const { tm, dev } = await coasting('stop');
+    tm.setSpeed(5);
+    for (const kmh of [4, 4, 4, 3, 3, 3, 2, 1, 0.5]) { dev.speed(kmh); clock += 1100; }
     await flush();
     expect(setSpeeds(dev)).toEqual([]);
     expect(tm.state.target).toBe(5);
