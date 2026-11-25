@@ -104,6 +104,11 @@ const CONFIRM_MS = 1000;
 const RUNNING_CONFIRM_MS = 3000;
 /** ... and at least this many readings in that run */
 const RUNNING_CONFIRM_READINGS = 3;
+/**
+ * ... and the latest at least this much above the first: one reading that jitters up (3.0, 3.0, 3.1) while the belt still
+ * slows down is no rise. A belt restarted on the treadmill runs up from standing, so it rises well past this in 3 s.
+ */
+const RUNNING_RISE_KMH = 0.5;
 
 /**
  * The only place that creates speed commands. Approaches every target in steps of at most maxStep,
@@ -218,8 +223,8 @@ export class SpeedGovernor {
     // Standing is confirmed like a speed: readings below STANDING_KMH at least CONFIRM_MS apart with none above in between,
     // so one spurious 0.0 during the coast-down (#49) does not end the wait
     // The wait also ends when the belt is seen running again: at least RUNNING_CONFIRM_READINGS readings at or above
-    // MOVING_KMH over at least RUNNING_CONFIRM_MS, none lower than the one before (gaps of at most freshMs), the latest above
-    // the first. Equal readings alone are not enough: a stopping belt can repeat its old speed (reporting lag) or hold a value
+    // MOVING_KMH over at least RUNNING_CONFIRM_MS, none lower than the one before (gaps of at most freshMs), the latest at
+    // least RUNNING_RISE_KMH above the first. Equal readings alone are not enough: a stopping belt can repeat its old speed (reporting lag) or hold a value
     // while it decelerates (a plateau), but it does not rise. A belt restarted on the console runs up from standing, so it
     // rises, even if no reading below STANDING_KMH and no "started" came.
     if (this.coasting) {
@@ -234,7 +239,7 @@ export class SpeedGovernor {
         } else {
           r.last = { kmh, at };
           r.count++;
-          if (r.count >= RUNNING_CONFIRM_READINGS && at - r.first.at >= RUNNING_CONFIRM_MS && kmh > r.first.kmh + EPS) {
+          if (r.count >= RUNNING_CONFIRM_READINGS && at - r.first.at >= RUNNING_CONFIRM_MS && kmh >= r.first.kmh + RUNNING_RISE_KMH - EPS) {
             this.coasting = false;
             this.standingSince = null;
           }

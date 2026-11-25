@@ -150,6 +150,12 @@ and then ramps up to the last speed asked for on this connection, if any (a new 
 failed or a Stop or Pause came in while it was on its way (then nothing more of it is sent). While a Stop or Pause is
 still being sent or sent again, `start()` sends nothing and returns `false`: the Stop keeps its attempts.
 
+A stop the treadmill reports (Machine Status stopped, paused or safety key) while Start is being written also makes
+`start()` return `false`, and the wait after a stop is kept (see `setSpeed`). If that report was a late echo of an earlier
+stop, the treadmill may still have taken the Start: the belt then runs at its lowest speed while `start()` returned `false`.
+Nothing faster is sent until the wait ends (as described under `setSpeed`; `stop()` and then `start()` always end it); a second `start()`
+on that belt gives `start-belt-moving`.
+
 Start is **not sent** when the lowest speed was not set: the write failed, the limit is below the treadmill's lowest speed
 (`no-allowed-speed`), or the treadmill refused it. It waits up to one second for the treadmill's answer to that speed; a
 treadmill that does not answer is let through, one that refuses it is not; only the answer to that very write counts (an
@@ -231,8 +237,9 @@ The wait ends only on what the belt is seen to do, never on a message alone:
 - **Standing:** readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above in between. One spurious 0.0 does
   not count.
 - **Running again:** three or more readings at or above `MOVING_KMH` (0.3 km/h) over at least 3 s, none lower than the one
-  before, the latest higher than the first. Equal readings are not enough: a stopping belt can report its old speed for a
-  while or hold one value as it slows down, but its readings do not rise. A belt restarted on the treadmill runs up from
+  before, the latest at least 0.5 km/h higher than the first. Equal readings, or one that jitters up by 0.1, are not
+  enough: a stopping belt can report its old speed for a while or hold one value as it slows down, but its readings do not
+  rise. A belt restarted on the treadmill runs up from
   standing, so its readings rise, also when it reported no reading below `STANDING_KMH` and no `started`. From then on the
   governor behaves as without a stop: a lowered limit (`setLimits`) is sent, a held speed is ramped to.
 - If none of these is seen (a belt restarted on the treadmill whose readings never rise, for example because the treadmill

@@ -292,6 +292,25 @@ describe('SpeedGovernor', () => {
       expect(sent.length).toBe(1);
     });
 
+    it('an upward jitter during the coast-down (3.0, 3.0, 3.1, 3.1 over 3 s, or a rise of 0.4) is not running again: nothing is sent', async () => {
+      const { gov, sent } = make();
+      gov.noteMeasured(4);
+      gov.reset(true);
+      gov.request(5);
+      for (const kmh of [3.0, 3.0, 3.1, 3.1, 3.1]) { gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1500); }
+      expect(sent).toEqual([]);
+      expect(gov.holding).toBe(true);
+      const b = make();
+      b.gov.noteMeasured(4);
+      b.gov.reset(true);
+      b.gov.request(5);
+      for (const kmh of [3.0, 3.1, 3.2, 3.3, 3.4]) { b.gov.noteMeasured(kmh); await vi.advanceTimersByTimeAsync(1000); }
+      expect(b.sent).toEqual([]); // 0.4 above the first reading of the run
+      b.gov.noteMeasured(3.5); // 0.5 above it: a real rise
+      await vi.advanceTimersByTimeAsync(0);
+      expect(b.sent.length).toBe(1);
+    });
+
     it('a reading below 0.3 in a run of a moving belt starts the run again', async () => {
       const { gov, sent } = make();
       gov.noteMeasured(4);
