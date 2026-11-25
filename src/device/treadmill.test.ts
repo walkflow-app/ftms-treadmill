@@ -844,6 +844,27 @@ describe('a stop at the treadmill is hinted by Training Status 0f (#39)', () => 
     expect(setSpeeds(dev).length).toBeGreaterThan(0);
   });
 
+  it('the hold lasts until 15 s after the hint, and only while the belt is reported moving', async () => {
+    const { tm, dev } = await ramping();
+    const t0 = clock;
+    dev.trainingStatus(0x01, 0x0f);
+    dev.speed(3);
+    tm.setSpeed(2); // asked for after the hint: held, not sent
+    for (const s of [1, 5, 9, 14]) { clock = t0 + s * 1000; dev.speed(3); await vi.advanceTimersByTimeAsync(10); }
+    expect(setSpeeds(dev)).toEqual([]);
+    clock = t0 + 15_000;
+    dev.speed(0.2); // not moving: the hold stays (this belt is stopping)
+    await vi.advanceTimersByTimeAsync(10);
+    expect(setSpeeds(dev)).toEqual([]);
+    clock = t0 + 16_000;
+    dev.speed(3);
+    await vi.advanceTimersByTimeAsync(10);
+    clock = t0 + 17_500;
+    dev.speed(3);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(setSpeeds(dev).length).toBeGreaterThan(0); // the hint was nothing: the speed goes out
+  });
+
   it('a stop that follows the hint keeps its wait however long the belt runs on', async () => {
     const { tm, dev } = await ramping();
     dev.trainingStatus(0x01, 0x0f);

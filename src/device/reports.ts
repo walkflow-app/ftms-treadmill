@@ -96,7 +96,7 @@ export function setupReports(host: ReportsHost) {
   function stopHint() {
     if (governor.afterStop) return;
     governor.reset(true);
-    hint ={ at: host.now(), stops: governor.stops };
+    hint = { at: host.now(), stops: governor.stops };
   }
 
   /**
