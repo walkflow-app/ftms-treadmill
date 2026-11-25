@@ -134,10 +134,15 @@ export function decide(s) {
   if (s.failedFixes > 1) return out('hold', 'two fix runs of the agent failed');
   if (s.running.fix) return out('wait', 'a fix is running');
   if (s.humanChangesRequested) return out('skip', 'a person requested changes');
-  // A pull request claude.yml opened with the workflow token started no workflow: one empty commit by the app starts them
-  if (needsChecks) return out('kick', 'no checks ran yet', { sha: pr.headSha });
-  if (pr.author.login === 'github-actions[bot]' && s.headKicked && !REQUIRED_CHECKS.some(n => n in s.checks))
-    return out('hold', 'the checks did not start after the kick');
+  // A pull request claude.yml opened with the workflow token started no workflow: one empty commit by the app starts them.
+  // Not with a conflict: GitHub starts no workflow on it, a kick cannot help, and the conflict is solved first (below)
+  const conflicting = s.mergeable === 'CONFLICTING';
+  // UNKNOWN: GitHub has not worked out yet whether there is a conflict (it does not for a while after main moved). A kick that
+  // started nothing is then no proof that the checks cannot start: wait for the next sweep, and park only when it takes hours
+  const unknown = s.mergeable === 'UNKNOWN';
+  if (needsChecks && !conflicting) return out('kick', 'no checks ran yet', { sha: pr.headSha });
+  if (pr.author.login === 'github-actions[bot]' && s.headKicked && !REQUIRED_CHECKS.some(n => n in s.checks) && !conflicting)
+    return unknown && !stale ? out('wait', 'GitHub does not know yet whether there is a conflict') : out('hold', 'the checks did not start after the kick');
 
   const reviews = s.reviews.filter(r => r.user === REVIEWER)
     .map(r => Object.assign({}, r, { mark: readMarker('agent-review', r.body) }))
@@ -148,10 +153,12 @@ export function decide(s) {
     return m?.sha === sha && m.mode === mode;
   });
 
-  if (s.mergeable === 'CONFLICTING')
+  if (conflicting)
     return fixed(pr.headSha, 'conflict') ? out('hold', 'the conflict with main is still there after one try')
       : counted >= LIMITS.reviews ? out('hold', `${LIMITS.reviews} reviews and still not done`)
       : out('fix', 'conflict with main', { mode: 'conflict', sha: pr.headSha });
+  // No verdict on the reviews while GitHub does not know about a conflict: it may be there, and it is solved first
+  if (unknown && !stale) return out('wait', 'GitHub does not know yet whether there is a conflict');
 
   // The review of the head commit: for a safety change one by each model
   const onHead = reviews.filter(r => r.commitId === pr.headSha);
@@ -310,8 +317,9 @@ function readState(n, pipeline) {
     mergedToday,
     failedFixes: failedFixRuns(fixRuns, reset),
     headKicked: commit.commit.message.startsWith(KICK_MESSAGE),
-    reviewFailed: headRuns.some(r => r.name === 'Agent review' && r.status === 'completed'
-      && ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure'].includes(r.conclusion)),
+    // The latest review run of the head failed (not: found something)
+    reviewFailed: ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure']
+      .includes(headRuns.filter(r => r.name === 'Agent review').toSorted((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).at(0)?.conclusion ?? ''),
     // Since the commit was pushed (its first workflow run), not since it was made, and not before `stuck` was taken off
     headAgeHours: headAge(Date.now(), headRuns.map(r => r.created_at), commit.commit.committer.date, reset),
   };
