@@ -228,7 +228,9 @@ Sets the speed to go to. Returns the target it will actually ramp to (inside the
 
 How it gets there: in steps of at most `maxStep`, one command at most every `RAMP_INTERVAL_MS` (1.5 s), only while the
 belt moves. Before Start, or while the belt still stands, the speed is held (`speed-held-until-moving`) and ramped to
-once it moves.
+once it moves. A treadmill that reports `Pre-Workout` (`0e`) counts down after Start (3 s on a Sportstech sPad 500) and
+ignores speed commands then, though it reports a speed; the target stays held until another training status comes, or for
+at most 8 s after the `0e`, and is ramped to from there.
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
 end, or the training status `Post-Workout` (`0f`), which some treadmills report 4 to 8 s before their Machine Status "stopped";
@@ -453,7 +455,7 @@ off();
 | `data` | [`TreadmillData`](#treadmilldata) | the treadmill reports (about once a second) |
 | `heartRate` | `number` (bpm) | the Heart Rate service reports |
 | `machineStatus` | `{ event: MachineEvent \| null; hex: string }` | the treadmill reports a change ([`MachineEvent`](#machineevent)) |
-| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`). `Post-Workout` (`0f`) also counts as the hint of a stop, see [`setSpeed`](#tmsetspeedkmh-options) and promise 7 in docs/LIBRARY.md |
+| `trainingStatus` | `{ hex; status: number \| null; text: string \| null }` | the treadmill's training status (e.g. `'Pre-Workout'`). `Pre-Workout` (`0e`) holds the ramp for the start countdown and `Post-Workout` (`0f`) also counts as the hint of a stop, see [`setSpeed`](#tmsetspeedkmh-options) and promise 7 in docs/LIBRARY.md |
 | `controlResponse` | [`ControlPointResponse`](#controlpointresponse) | every answer to a command, also an OK |
 | `notice` | [`Notice`](#notices) | something worth telling the person or a log |
 | `log` | `string` | protocol lines (bytes sent, an answer that could not be read); not for people |

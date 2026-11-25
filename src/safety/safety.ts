@@ -119,6 +119,14 @@ const RUNNING_RISE_KMH = 0.5;
 const HINT_WINDOW_MS = 10_000;
 
 /**
+ * Training Status "Pre-Workout" (0x0e) is the treadmill's start countdown (sPad 500: 3 s), in which it reports a speed but
+ * ignores Set Speed, answering OK (#38). The belt does not count as moving until the status changes, but at most this long
+ * after it: a treadmill that never leaves it must not hold the ramp for ever. Above the library's start time (4.5 s) and the
+ * 3 s of the sPad 500. A decision for the maintainer.
+ */
+const COUNTDOWN_MAX_MS = 8000;
+
+/**
  * The only place that creates speed commands. Approaches every target in steps of at most maxStep,
  * with at least intervalMs between two commands, and never beyond the range.
  *
@@ -157,6 +165,9 @@ export class SpeedGovernor {
   private stopCount = 0;
   /** The end of a wait that only a hint of a stop started (hintStop), until HINT_WINDOW_MS has passed */
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The treadmill reports its start countdown (Training Status 0e): its readings do not show a belt that takes commands */
+  private countdown = false;
+  private countdownTimer: ReturnType<typeof setTimeout> | null = null;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -258,7 +269,7 @@ export class SpeedGovernor {
       if (!this.coasting) this.run = null;
     }
     const was = this.moving;
-    this.moving = !this.coasting && kmh >= MOVING_KMH;
+    this.moving = !this.coasting && !this.countdown && kmh >= MOVING_KMH;
     if (this.moving && was === false) { this.pump(); this.deps.onChange?.(); }
     // A limit was lowered while a reading above it was not yet confirmed: apply it as soon as the belt is shown to run above it
     if ((confirmedNow || overConfirmed) && this.limitPending) {
@@ -442,12 +453,45 @@ export class SpeedGovernor {
       if (this.stopCount !== stops || !this.coasting) return;
       this.newRun();
       const m = this.measured;
-      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH) {
+      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH && !this.countdown) {
         this.moving = true;
         this.pump();
       }
       this.deps.onChange?.();
     }, HINT_WINDOW_MS);
+  }
+
+  /**
+   * Training Status "Pre-Workout" (0x0e): the start countdown. A belt that is not counted as moving yet stays so, however fast
+   * it is reported, until another status comes or COUNTDOWN_MAX_MS has passed; then the held target is approached from what
+   * the belt does. Only holds back, never sends. Ignored while the belt counts as moving or was seen running since the last reset (an echo mid-run).
+   */
+  noteCountdown() {
+    if (this.moving === true || this.countdown) return;
+    // A belt seen running (a fresh moving reading, or a confirmed speed since the last reset) is not at the start of a run: a 0e
+    // then is no countdown, and holding would delay a lowered limit. After a Start both are empty (reset) when the 0e comes.
+    const m = this.measured;
+    if (this.confirmed || (m && this.deps.now() - m.at < this.opts.freshMs && m.kmh >= MOVING_KMH)) return;
+    this.countdown = true;
+    this.moving = false;
+    this.countdownTimer = setTimeout(() => this.endCountdown(), COUNTDOWN_MAX_MS);
+    this.deps.onChange?.();
+  }
+
+  /** Any other Training Status: the countdown is over */
+  noteCountdownOver() { this.endCountdown(); }
+
+  private endCountdown() {
+    if (this.countdownTimer !== null) clearTimeout(this.countdownTimer);
+    this.countdownTimer = null;
+    if (!this.countdown) return;
+    this.countdown = false;
+    const m = this.measured;
+    if (!this.coasting && m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH && m.kmh <= LIMIT_MAX) {
+      this.moving = true;
+      this.pump();
+    }
+    this.deps.onChange?.();
   }
 
   /**
@@ -459,6 +503,9 @@ export class SpeedGovernor {
   reset(afterStop = false) {
     if (this.hintTimer !== null) clearTimeout(this.hintTimer);
     this.hintTimer = null;
+    if (this.countdownTimer !== null) clearTimeout(this.countdownTimer);
+    this.countdownTimer = null;
+    this.countdown = false;
     if (afterStop) this.stopCount++;
     this.coasting = afterStop;
     this.standingSince = null;

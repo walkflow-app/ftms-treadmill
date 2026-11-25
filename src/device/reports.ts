@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'hintStop' | 'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'hintStop' | 'noteCountdown' | 'noteCountdownOver' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -36,6 +36,8 @@ const RESULT_OK = 1;
 const RESULT_CONTROL_NOT_PERMITTED = 5;
 /** Training Status "Post-Workout" */
 const TRAINING_POST_WORKOUT = 0x0f;
+/** Training Status "Pre-Workout": the treadmill's start countdown */
+const TRAINING_PRE_WORKOUT = 0x0e;
 
 const MACHINE_ENDS: Partial<Record<MachineEvent['kind'], ReportedEnd>> = {
   stopped: 'machine-stopped',
@@ -91,7 +93,10 @@ export function setupReports(host: ReportsHost) {
    * those wait for the Machine Status, which is the report of a stop.
    */
   function trainingStatus(dv: DataView) {
-    if (parseTrainingStatus(dv)?.status === TRAINING_POST_WORKOUT) governor.hintStop();
+    const status = parseTrainingStatus(dv)?.status;
+    if (status === TRAINING_POST_WORKOUT) governor.hintStop();
+    else if (status === TRAINING_PRE_WORKOUT) governor.noteCountdown();
+    else if (status !== undefined) governor.noteCountdownOver();
   }
 
   /**
