@@ -1,58 +1,34 @@
 #!/usr/bin/env node
 // PreToolUse hook for Bash. A local session runs with the maintainer's own GitHub login, so GitHub cannot tell an agent's
-// comment from the maintainer's. The PM does the GitHub work (process decision 0012), but what is on the stop list of
-// process/PRINCIPLES.md goes out only after the maintainer confirms it in the permission dialog:
+// comment from the maintainer's. The PM does the GitHub work (process decision 0012), but what only a person can say goes
+// out only after the maintainer confirms it in the permission dialog:
 // - ask: a comment or review whose text is only `approved` or `/hardware-ok` (also from a body file, stdin or JSON),
-//   publishing a release, and merging a pull request that is on the stop list: it carries `needs-maintainer` (the pipeline
-//   sets it) or `hold` (the maintainer's), it is belt code (`safety`, `needs-hardware`: the hook does not see the reviews,
-//   the pipeline merges those), or it changes the rules themselves (.github/, .claude/, scripts/, CLAUDE.md, CODEOWNERS,
-//   VISION.md, process/PRINCIPLES.md). When the hook cannot tell which pull request a merge is about, or cannot look it
-//   up, it asks too; so does `--auto`, and removing `needs-maintainer` or `hold`;
+//   publishing a release, and removing the label `needs-maintainer` or `hold`;
 // - ask: a push that is not `git push [-u] origin <one branch>` (the allow list lets that one pass, nothing else), and
 //   `gh workflow run` on another ref;
-// - not asked any more (principles 1, 5 and 6): `agent-ready`, closing an issue or a pull request, approving a review, and
-//   merging any other pull request: the checks and the approval of the feature decide;
+// - not asked (principles 1, 5 and 6; the maintainer, 2026-11-25): `agent-ready`, closing an issue or a pull request,
+//   approving a review, and **any merge**. A pull request on the stop list (`needs-maintainer`, `hold`, belt code, the
+//   rules themselves) is merged by a session only when the maintainer said so in the session ("merge #N"): that word is the
+//   confirmation, and a dialog on top of it only costs time;
 // - deny: all of the asks when permissions are bypassed, because then there is no dialog to answer.
 // It is one layer, not a proof: a script the agent writes and runs is not checked. The same file is in .claude/hooks/ of
-// meta, walkflow, ftms-treadmill and route-store; meta first (M3), the others follow, then change them together.
+// meta, walkflow, ftms-treadmill and route-store; meta first, the others follow, then change them together.
 // Tests (in meta): node --test .claude/hooks/*.test.mjs
-import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const WRITE = /\bgh\s+(?:issue|pr)\s+(?:comment|create|edit|review|close|reopen)\b|\bgh\s+api\b|\bcurl\b/;
 const SIGNAL = /^(?:approved|\/hardware-ok)$/i;
 const FLAG = /^.*?(?:^|\s)(?:--body|--raw-field|--field|-b|-f|-F)(?:=|\s+)/;
-// The rules themselves: a pull request that changes one of these is the maintainer's to merge, in every repository.
-const RULES = /^(?:\.github\/|\.claude\/|scripts\/|VISION\.md$|process\/PRINCIPLES\.md$)|(?:^|\/)(?:CLAUDE\.md|CODEOWNERS)$/;
-// What the repositories keep for the maintainer (PROTECTED in walkflow's and ftms-treadmill's scripts/agent-pipeline.mjs), and
-// belt and trust code (SAFETY and TRUST in scripts/paths.mjs): their two reviews are not visible to the hook, and a new pull
-// request has no `safety` label yet. One list for all repositories, wider than each: a merge that asks too often is a click,
-// one that does not ask is a hole. Keep it in step with those lists (a change there is a change here).
-const KEPT = [
-  /^HARDWARE-TESTS\.md$/, /^docs\/LIBRARY\.md$/, /^tests\/architecture\.test\.ts$/, /^package(?:-lock)?\.json$/,
-  /^\.(?:npmrc|nvmrc|node-version|gitignore|gitattributes)$/, /^\.husky\//, /^\.oxlintrc\.json$/, /^knip\.json$/,
-  /^tsconfig[^/]*\.json$/, /^vite\.config\.ts$/, /^vitest\.config/, /^index\.html$/, /^build\//,
-  /^release-please-config\.json$/, /^\.release-please-manifest\.json$/, /^electron-builder\.config\.cjs$/,
-  /^public\/legal\//,
-];
-const BELT = [
-  /^src\/core\/safety\//, /^src\/ui\/live\//, /^src\/core\/training\//, /^src\/platform\/bt-devices/, /^src\/ui\/background\.ts$/,
-  /^src\/main\.ts$/, /^electron\//, /^src\/net\//, /^src\/core\/share\//, /^src\/safety\//, /^src\/protocol\//, /^src\/device\//,
-];
-// Labels that keep a pull request from being merged by a session without a question.
-const STOP_LABELS = ['needs-maintainer', 'hold', 'safety', 'needs-hardware'];
-// `gh pr view --json files` returns at most 100 files: with that many, a rules file further down could be missed.
-const FILES_CUT = 100;
 
 // A command that runs `rest`: at the start of a line, or after ; & | or $(, and after VAR=value prefixes. Not after a
 // backtick: those are mostly Markdown in bodies.
 // Text that only mentions the command (in a body) does not count.
 const invokes = (command, rest) => new RegExp(String.raw`(?:^|[;&|(])\s*(?:\w+=\S*\s+)*` + rest, 'm').test(command);
 
-const unquote =s => s.trim().replace(/^\$?["'(]+/, '').replace(/(?:\\n)?["')]+$/, '').trim();
+const unquote = s => s.trim().replace(/^\$?["'(]+/, '').replace(/(?:\\n)?["')]+$/, '').trim();
 
-// Quoted text with spaces is a body or a title: what it says is not run (a GraphQL query is checked on the full command).
+// Quoted text with spaces is a body or a title: what it says is not run.
 const bareOf = command => command.replace(/"(?:[^"\\]|\\.)*"/g, q => (/\s/.test(q) ? q[0] + q[0] : q))
   .replace(/'[^']*'/g, q => (/\s/.test(q) ? q[0] + q[0] : q));
 
@@ -85,55 +61,6 @@ const read = (file, cwd) => {
   }
 };
 
-// `gh pr merge` flags that take a value, so that the value is not taken for the pull request.
-const VALUE_FLAGS = new Set(['-R', '--repo', '-t', '--subject', '-b', '--body', '-F', '--body-file', '-A', '--author-email',
-  '--match-head-commit']);
-
-const MERGE = /(?:^|[;&|(])\s*(?:\w+=\S*\s+)*gh\s+pr\s+merge\b([^\n;&|)]*)/gm;
-
-const targetOf = args => {
-  const tokens = args.trim().split(/\s+/).filter(Boolean);
-  const auto = /(?:^|\s)--auto\b/.test(args);
-  let repo = null;
-  let positional = null;
-  for (let i = 0; i < tokens.length; i += 1) {
-    const t = tokens[i];
-    const inline = /^(?:-R|--repo)=(.+)$/.exec(t) ?? /^-R(.+)$/.exec(t);
-    if (inline) repo = inline[1];
-    else if (t === '-R' || t === '--repo') repo = tokens[++i] ?? null;
-    else if (VALUE_FLAGS.has(t)) i += 1;
-    else if (!t.startsWith('-') && !/^(["'])\1$/.test(t) && positional === null) positional = t;
-  }
-  const url = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)\b/.exec(positional ?? '');
-  if (url) return { number: url[2], repo: url[1], auto };
-  return { number: /^\d+$/.test(positional ?? '') ? positional : null, repo, auto };
-};
-
-/** Every pull request a `gh pr merge` in the command is about: [{ number, repo, auto }] (number null: the current branch
- * or a branch name). */
-export const mergeTargets = command => [...bareOf(command).matchAll(MERGE)].map(m => targetOf(m[1]));
-
-/** The first of them, as { number, repo }, or null. */
-export const mergeTarget = command => {
-  const t = mergeTargets(command).at(0);
-  return t ? { number: t.number, repo: t.repo } : null;
-};
-
-/** The labels and the changed files of a pull request, or null when it cannot be looked up. */
-const lookupPr = ({ number, repo }, cwd) => {
-  try {
-    const out = execFileSync('gh', ['pr', 'view', number, ...(repo ? ['-R', repo] : []), '--json', 'labels,files'],
-      { cwd, encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'ignore'] });
-    const pr = JSON.parse(out);
-    return { labels: pr.labels.map(l => l.name), files: pr.files.map(f => f.path) };
-  } catch {
-    return null;
-  }
-};
-
-const onStopList = pr => STOP_LABELS.some(l => pr.labels.includes(l)) || pr.files.length >= FILES_CUT
-  || pr.files.some(f => RULES.test(f) || KEPT.some(p => p.test(f)) || BELT.some(p => p.test(f)));
-
 const PUSH = /(?:^|[;&|(])\s*(?:\w+=\S*\s+)*git\s+push\b([^\n;&|)]*)/gm;
 
 /** True when a push in the command is anything but `[-u|--set-upstream] origin <one plain branch>`. */
@@ -148,10 +75,6 @@ const pushRisk = bare => [...bare.matchAll(PUSH)].some(([, args]) => {
 const CONFIRM = {
   signal: 'A comment that is only `approved` or `/hardware-ok` is the maintainer\'s signal (approval of a feature, or the '
     + 'hardware check done): confirm only if you give it.',
-  merge: 'This merge is on the stop list: the pull request carries `needs-maintainer`, `hold`, `safety` or `needs-hardware`, '
-    + 'or it changes the rules themselves (.github/, .claude/, scripts/, CLAUDE.md, CODEOWNERS, VISION.md, PRINCIPLES.md), '
-    + 'files the maintainer keeps (package.json, build and gate configs, public/legal/, docs/LIBRARY.md) or belt and trust code, '
-    + 'or it is `--auto`, or the hook cannot tell which pull request it is. Confirm this merge.',
   label: 'Removing `needs-maintainer` or `hold` decides a stop-list item: confirm it.',
   push: 'Only a plain push of one branch to origin goes without a question: this push names more, forces, deletes or '
     + 'reaches main. Confirm it.',
@@ -160,33 +83,12 @@ const CONFIRM = {
     + '`/hardware-ok`).',
 };
 
-/** The verdict for a command: ['ask' | 'deny', reason] or null. `mode` is the session's permission mode. */
-export const decide = (command, cwd = process.cwd(), mode = 'default', lookup = lookupPr) => {
-  const verdict = check(command, cwd, lookup);
-  if (verdict && mode === 'bypassPermissions') {
-    return ['deny', `Permissions are bypassed, so this cannot be confirmed. ${verdict}`];
-  }
-  return verdict ? ['ask', verdict] : null;
-};
-
-const check = (command, cwd, lookup) => {
+const check = (command, cwd) => {
   const bare = bareOf(command);
   if (WRITE.test(command)) {
     const texts = [command, ...bodyFiles(command).map(f => read(f, cwd))];
     if (texts.some(t => jsonSignal(t) || t.split('\n').some(signalLine))) {
       return CONFIRM.signal;
-    }
-  }
-  if (invokes(command, String.raw`gh\s+api\b[\s\S]*(?:/pulls/\d+/merge\b|mergePullRequest|enablePullRequestAutoMerge)`)) {
-    return CONFIRM.merge;
-  }
-  if (invokes(bare, String.raw`gh\s+pr\s+merge\b`)) {
-    // Without -R the number belongs to the repository of the current directory (or of GH_REPO): not the one looked at.
-    const elsewhere = /(?:^|[;&|(])\s*(?:cd|pushd)\s/m.test(bare) || /\bGH_REPO=/.test(bare);
-    for (const target of mergeTargets(command)) {
-      if (!target.number || target.auto || (!target.repo && elsewhere)) return CONFIRM.merge;
-      const pr = lookup(target, cwd);
-      if (!pr || onStopList(pr)) return CONFIRM.merge;
     }
   }
   if (invokes(command, String.raw`gh\s+(?:issue|pr)\s+edit\b[^\n]*--remove-label(?:=|\s+)[^\n]*\b(?:needs-maintainer|hold)\b`)) {
@@ -197,6 +99,15 @@ const check = (command, cwd, lookup) => {
   if (invokes(bare, String.raw`gh\s+release\s+edit\b[^\n]*--draft(?:=false|\s+false)\b`)
     || (invokes(bare, String.raw`gh\s+release\s+create\b`) && !/\s--draft\b(?!=false)/.test(bare))) return CONFIRM.release;
   return null;
+};
+
+/** The verdict for a command: ['ask' | 'deny', reason] or null. `mode` is the session's permission mode. */
+export const decide = (command, cwd = process.cwd(), mode = 'default') => {
+  const verdict = check(command, cwd);
+  if (verdict && mode === 'bypassPermissions') {
+    return ['deny', `Permissions are bypassed, so this cannot be confirmed. ${verdict}`];
+  }
+  return verdict ? ['ask', verdict] : null;
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {
