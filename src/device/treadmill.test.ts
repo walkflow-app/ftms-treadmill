@@ -1085,7 +1085,7 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     expect(setSpeeds(dev)).toEqual(['02 fa 00']);
   });
 
-  it('a hint without a stop holds a steady belt: a lower speed and a lowered limit are not sent until Stop or a stop report (documented, promise 7)', async () => {
+  it('a hint without a stop holds a steady belt only for HINT_WINDOW_MS: then a lower speed and a lowered limit are sent (promise 7)', async () => {
     const { tm, dev, notices } = await rig({ speedLimit: 6 });
     dev.speed(5);
     tm.setSpeed(5);
@@ -1093,10 +1093,63 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     dev.writes = [];
     dev.trainingStatus(0x0f);
     for (let i = 0; i < 4; i++) { dev.speed(5); await tick(2000); }
-    tm.setSpeed(2);
     tm.setLimits({ speedLimit: 3 });
-    await tick(10_000);
-    expect(setSpeeds(dev)).toEqual([]);
+    tm.setSpeed(2);
+    dev.speed(5);
+    await tick(1000);
+    expect(setSpeeds(dev)).toEqual([]); // inside the window nothing goes out
     expect(notices).toContainEqual({ code: 'speed-held-until-moving', kmh: 2 });
+    for (let i = 0; i < 4; i++) { dev.speed(5); await tick(1000); }
+    dev.speed(5);
+    await tick(2000);
+    expect(setSpeeds(dev)).toContain('02 2c 01'); // the limit 3.0 goes out once the window has passed
+  });
+
+  it('the Machine Status stop within the window makes it the ordinary wait: the window ends nothing', async () => {
+    const { tm, dev } = await rig({ speedLimit: 6 });
+    dev.speed(5);
+    tm.setSpeed(5);
+    await tick(10_000);
+    dev.writes = [];
+    dev.trainingStatus(0x0f);
+    let kmh = 5;
+    for (let i = 0; i < 5; i++) { kmh -= 0.3; dev.speed(kmh); await tick(1000); }
+    dev.machineStatus(0x02, 0x01);
+    tm.setSpeed(2);
+    for (let i = 0; i < 10; i++) { kmh = Math.max(1, kmh - 0.1); dev.speed(kmh); await tick(1500); }
+    expect(setSpeeds(dev)).toEqual([]);
+  });
+
+  it('a Stop sent by the app within the window makes it the ordinary wait too', async () => {
+    const { tm, dev } = await rig({ speedLimit: 6 });
+    dev.speed(5);
+    tm.setSpeed(5);
+    await tick(10_000);
+    dev.trainingStatus(0x0f);
+    await tick(1000);
+    const stopping = tm.stop();
+    await tick(1000);
+    await stopping;
+    dev.writes = [];
+    tm.setSpeed(2);
+    let kmh = 4;
+    for (let i = 0; i < 10; i++) { kmh = Math.max(1, kmh - 0.1); dev.speed(kmh); await tick(1500); }
+    expect(setSpeeds(dev)).toEqual([]);
+  });
+
+  it('0f while the wait after a stop already runs starts no window (the echo after every stop of the app)', async () => {
+    const { tm, dev } = await rig({ speedLimit: 6 });
+    dev.speed(5);
+    tm.setSpeed(5);
+    await tick(10_000);
+    const stopping = tm.stop();
+    await tick(1000);
+    await stopping;
+    dev.writes = [];
+    dev.trainingStatus(0x0f);
+    tm.setSpeed(2);
+    let kmh = 4;
+    for (let i = 0; i < 12; i++) { kmh = Math.max(1, kmh - 0.1); dev.speed(kmh); await tick(1500); }
+    expect(setSpeeds(dev)).toEqual([]);
   });
 });

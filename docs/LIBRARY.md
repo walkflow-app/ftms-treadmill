@@ -159,10 +159,10 @@ one of them is a `safety` commit and at least a minor version.
    that wait. A stop at the treadmill is learned from its Machine Status only 4 to 8 s after the press; the Training Status
    `Post-Workout` (`0f`), which the sPad 500 reports about a second after any stop, starts the same wait at once (the ramp
    is forgotten, no `ended` and no phase change yet: those wait for the Machine Status). Whether `0f` comes in other cases is
-   not known. A wrong guess never makes the belt faster, but it is a wait like any other: while the belt keeps running at
-   a steady speed it shows neither standing nor rising readings, so a lower speed asked for and a lowered limit are held too
-   (not sent) until a stop report or a Stop sent by the app ends it, or the belt is seen standing or rising. On a belt that
-   keeps running `start()` is refused (`start-belt-moving`), so there only Stop (or a stop report) ends this hold.
+   not known, so a wait that only `0f` started ends by itself after `HINT_WINDOW_MS` (10 s) if no stop report, no Stop sent
+   by the app and no standing belt came meanwhile: it ends like a new run, and a lower speed and a lowered limit go out again.
+   The wait after a stop that was sent or reported has no time limit, and a `0f` that arrives while such a wait runs
+   (the echo after every stop of the app) changes nothing. A wrong guess never makes the belt faster.
    A speed asked for meanwhile is held (`speed-held-until-moving`).
    The wait ends when the belt is seen standing
    (readings below `STANDING_KMH` at least `CONFIRM_MS` apart, none above in between), when it is seen running again (three

@@ -111,6 +111,14 @@ const RUNNING_CONFIRM_READINGS = 3;
 const RUNNING_RISE_KMH = 0.5;
 
 /**
+ * A wait that only the hint of a stop started (Training Status "Post-Workout", #39) ends after this long if no stop report
+ * and no stop sent by the app followed and the belt was not seen standing: the hint may have been wrong, and a wait that
+ * nothing ends would hold back a lowered limit. Above the 4 to 8 s after which the Machine Status of a stop comes. The wait
+ * after a stop that was sent or reported has no time limit.
+ */
+const HINT_WINDOW_MS = 10_000;
+
+/**
  * The only place that creates speed commands. Approaches every target in steps of at most maxStep,
  * with at least intervalMs between two commands, and never beyond the range.
  *
@@ -147,6 +155,8 @@ export class SpeedGovernor {
    */
   private run: { first: { kmh: number; at: number }; last: { kmh: number; at: number }; count: number } | null = null;
   private stopCount = 0;
+  /** The end of a wait that only a hint of a stop started (hintStop), until HINT_WINDOW_MS has passed */
+  private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private loggedHeld: number | null = null;
   private readonly opts: GovernorOptions;
 
@@ -418,12 +428,37 @@ export class SpeedGovernor {
   }
 
   /**
+   * The treadmill hints at a stop (Training Status "Post-Workout"): the same wait as after a stop (reset(true)), but only if no
+   * wait runs already (the echo after every stop, which must change nothing). A wait that only this hint started ends after
+   * HINT_WINDOW_MS, unless a stop of any kind (reset) came meanwhile or the belt was seen standing (the wait is over then).
+   * It ends like newRun() and then lets the held target and a lowered limit go on if the belt is seen moving.
+   */
+  hintStop() {
+    if (this.coasting) return;
+    this.reset(true);
+    const stops = this.stopCount;
+    this.hintTimer = setTimeout(() => {
+      this.hintTimer = null;
+      if (this.stopCount !== stops || !this.coasting) return;
+      this.newRun();
+      const m = this.measured;
+      if (m && this.deps.now() - m.at < this.opts.freshMs && Number.isFinite(m.kmh) && m.kmh >= MOVING_KMH) {
+        this.moving = true;
+        this.pump();
+      }
+      this.deps.onChange?.();
+    }, HINT_WINDOW_MS);
+  }
+
+  /**
    * Additionally forget the last command and measured value (after stop, start, disconnect).
    * `afterStop`: the belt may still coast down; nothing is sent until it was seen standing (readings below STANDING_KMH
    * at least CONFIRM_MS apart, none above in between), the belt runs again (rising readings over 3 s, see noteMeasured)
    * or a new run begins (reset without afterStop, newRun).
    */
   reset(afterStop = false) {
+    if (this.hintTimer !== null) clearTimeout(this.hintTimer);
+    this.hintTimer = null;
     if (afterStop) this.stopCount++;
     this.coasting = afterStop;
     this.standingSince = null;

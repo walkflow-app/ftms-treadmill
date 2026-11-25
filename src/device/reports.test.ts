@@ -14,6 +14,7 @@ function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   } satisfies ReportsHost['phase'];
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
+    hintStop: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;
@@ -190,7 +191,8 @@ describe('Training Status (#39)', () => {
     const r = rig({ program: true });
     r.session.beltStarted = true;
     r.reports.trainingStatus(dv(0x01, 0x0f));
-    expect(r.governor.reset).toHaveBeenCalledWith(true);
+    expect(r.governor.hintStop).toHaveBeenCalledTimes(1);
+    expect(r.governor.reset).not.toHaveBeenCalled(); // the governor decides: a hint is no stop report
     expect(r.host.ended).not.toHaveBeenCalled();
     expect(r.session.beltStarted).toBe(true);
   });
@@ -200,5 +202,6 @@ describe('Training Status (#39)', () => {
     r.reports.trainingStatus(dv(0x00, status));
     r.reports.trainingStatus(dv(0x00));
     expect(r.governor.reset).not.toHaveBeenCalled();
+    expect(r.governor.hintStop).not.toHaveBeenCalled();
   });
 });

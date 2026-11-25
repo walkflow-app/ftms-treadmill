@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'hintStop' | 'noteMeasured' | 'commandRefused'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -86,12 +86,12 @@ export function setupReports(host: ReportsHost) {
    * Training Status "Post-Workout" (0x0f) comes about a second after a stop, at the treadmill or sent by the app, and 4 to 8 s
    * before the Machine Status "stopped" (Sportstech sPad 500, #39). It is taken as the hint of a stop: the ramp is forgotten
    * and nothing is sent until the wait after a stop ends, like for that Machine Status. Whether it comes in other cases is
-   * not known; a wrong guess only holds the ramp back (the wait ends when the belt is seen standing or running again, or
-   * with the next start), so the belt is never made faster by it. It tells no `ended` and does not change the belt phase:
+   * not known; a wrong guess only holds the ramp back, and only for HINT_WINDOW_MS if no stop report and no stop sent follows
+   * (governor.hintStop), so the belt is never made faster by it. It tells no `ended` and does not change the belt phase:
    * those wait for the Machine Status, which is the report of a stop.
    */
   function trainingStatus(dv: DataView) {
-    if (parseTrainingStatus(dv)?.status === TRAINING_POST_WORKOUT) governor.reset(true);
+    if (parseTrainingStatus(dv)?.status === TRAINING_POST_WORKOUT) governor.hintStop();
   }
 
   /**
