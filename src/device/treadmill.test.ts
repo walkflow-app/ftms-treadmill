@@ -1085,6 +1085,67 @@ describe('a stop at the treadmill is learned from Training Status 0f, before its
     expect(setSpeeds(dev)).toEqual(['02 fa 00']);
   });
 
+  /** Target chosen while standing, Start, the treadmill counts down in Pre-Workout (0e) and reports a speed meanwhile (#38) */
+  async function countdown() {
+    const r = await rig({ speedLimit: 4 });
+    r.tm.setSpeed(2);
+    const starting = r.tm.start();
+    await tick(1500);
+    await starting;
+    r.dev.writes = [];
+    r.dev.machineStatus(0x04);
+    r.dev.trainingStatus(0x0e);
+    return r;
+  }
+
+  it('no ramp step goes out during the start countdown (0e), though a speed is reported; after 0d the ramp goes on from 1.0 (#38)', async () => {
+    const { dev } = await countdown();
+    for (let i = 0; i < 3; i++) { dev.speed(1); await tick(1000); }
+    expect(setSpeeds(dev)).toEqual([]); // the treadmill would answer OK and ignore them
+    dev.trainingStatus(0x0d);
+    await tick(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']); // 1.0 + maxStep 0.5
+    await tick(2000);
+    dev.speed(1.5);
+    await tick(0);
+    expect(setSpeeds(dev)).toEqual(['02 96 00', '02 c8 00']);
+  });
+
+  it('a treadmill that never leaves 0e holds the ramp only for COUNTDOWN_MAX_MS after the status, then the ramp goes on as before', async () => {
+    const { dev } = await countdown();
+    for (let i = 0; i < 7; i++) { dev.speed(1); await tick(1000); }
+    expect(setSpeeds(dev)).toEqual([]);
+    dev.speed(1);
+    await tick(2000);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']);
+  });
+
+  it('a stop during the countdown ends the hold', async () => {
+    const { tm, dev } = await countdown();
+    dev.speed(1);
+    await tick(1000);
+    const stopping = tm.stop();
+    await tick(1000);
+    await stopping;
+    dev.writes = [];
+    dev.trainingStatus(0x0d);
+    dev.speed(1);
+    await tick(2000);
+    expect(setSpeeds(dev)).toEqual([]); // the target was forgotten by the stop
+  });
+
+  it('without a training status the ramp starts as before', async () => {
+    const r = await rig({ speedLimit: 4 });
+    r.tm.setSpeed(2);
+    const starting = r.tm.start();
+    await tick(1500);
+    await starting;
+    r.dev.writes = [];
+    r.dev.speed(1);
+    await tick(2000);
+    expect(setSpeeds(r.dev)).toEqual(['02 96 00']);
+  });
+
   it('a hint without a stop holds a steady belt only for HINT_WINDOW_MS: then a lower speed and a lowered limit are sent (promise 7)', async () => {
     const { tm, dev, notices } = await rig({ speedLimit: 6 });
     dev.speed(5);

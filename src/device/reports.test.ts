@@ -15,6 +15,8 @@ function rig(opts: { program?: boolean; standstillFires?: boolean } = {}) {
   const governor = {
     reset: vi.fn(() => calls.push('governor reset')),
     hintStop: vi.fn(),
+    noteCountdown: vi.fn(),
+    noteCountdownOver: vi.fn(),
     noteMeasured: vi.fn(),
     commandRefused: vi.fn(() => calls.push('governor refused')),
   } as unknown as SpeedGovernor;
@@ -197,11 +199,23 @@ describe('Training Status (#39)', () => {
     expect(r.session.beltStarted).toBe(true);
   });
 
-  it.each([[0x01], [0x0d], [0x0e], [0x10]])('status %i and a short report change nothing', status => {
+  it.each([[0x01], [0x0d], [0x0e], [0x10]])('status %i and a short report stop nothing', status => {
     const r = rig();
     r.reports.trainingStatus(dv(0x00, status));
     r.reports.trainingStatus(dv(0x00));
     expect(r.governor.reset).not.toHaveBeenCalled();
     expect(r.governor.hintStop).not.toHaveBeenCalled();
+  });
+
+  it('Pre-Workout (0e) is the start countdown, any other status ends it, a short report neither (#38)', () => {
+    const r = rig();
+    r.reports.trainingStatus(dv(0x01, 0x0e));
+    expect(r.governor.noteCountdown).toHaveBeenCalledTimes(1);
+    expect(r.governor.noteCountdownOver).not.toHaveBeenCalled();
+    r.reports.trainingStatus(dv(0x01, 0x0d));
+    expect(r.governor.noteCountdownOver).toHaveBeenCalledTimes(1);
+    r.reports.trainingStatus(dv(0x00));
+    expect(r.governor.noteCountdown).toHaveBeenCalledTimes(1);
+    expect(r.governor.noteCountdownOver).toHaveBeenCalledTimes(1);
   });
 });
