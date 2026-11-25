@@ -232,6 +232,8 @@ once it moves.
 
 After a stop of any kind (`stop()`, `pause()`, a raw Stop or Pause, the treadmill's own stop or safety key, a standstill
 end) the belt coasts down while it still reports speeds above 0, and nothing is sent then either (`speed-held-until-moving`).
+A stop pressed on the treadmill counts from its Training Status `Post-Workout` (`0x0f`, about a second after the press), not
+only from the Machine Status 4 to 8 s later; the `trainingStatus` event is emitted as before.
 The wait ends only on what the belt is seen to do, never on a message alone:
 
 - **Standing:** readings below `STANDING_KMH` (0.1 km/h) at least 1 s apart, none above in between. One spurious 0.0 does

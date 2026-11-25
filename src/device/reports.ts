@@ -14,7 +14,7 @@ export type ReportedEnd = 'machine-stopped' | 'machine-paused' | 'safety-key' | 
 export interface ReportsHost {
   session: BeltState;
   phase: Pick<BeltPhaseTracker, 'stopRequested' | 'speed'>;
-  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused'>;
+  governor: Pick<SpeedGovernor, 'reset' | 'noteMeasured' | 'commandRefused' | 'afterStop'>;
   standstill: Pick<StandstillDetector, 'disarm' | 'feed'>;
   now(): number;
   /** A workout or route runs (the app says so) */
@@ -81,6 +81,18 @@ export function setupReports(host: ReportsHost) {
   }
 
   /**
+   * The treadmill reports Training Status "Post-Workout" (0x0f): seen 1 s after every stop, sent by the app or pressed on the
+   * treadmill, and 4 to 8 s before the Machine Status "stopped" of a stop at the treadmill (#39). It is taken as a hint of a
+   * stop: the ramp is forgotten and nothing is sent, like after a stop (the same wait, ended by the same evidence or a new run).
+   * Fail-safe: whatever else 0x0f means, a wrong guess only holds a speed back. A wait that already runs is left alone, so
+   * the echo of a stop the app sent does not count as a second stop (it would overtake a Start being sent).
+   */
+  function stopHint() {
+    if (governor.afterStop) return;
+    governor.reset(true);
+  }
+
+  /**
    * A write that went through is not yet a command the treadmill accepted. What it refused must not count as done: a refused
    * Stop on a moving belt is told to the person, a refused speed ends the ramp, refused control is asked for again at the next stop.
    */
@@ -107,5 +119,5 @@ export function setupReports(host: ReportsHost) {
     }
   }
 
-  return { data, machineStatus, controlResponse };
+  return { data, machineStatus, controlResponse, stopHint };
 }

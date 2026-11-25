@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTreadmillData, dataView, hex } from '../protocol/ftms.ts';
 import type { Notice } from '../protocol/notice.ts';
 import { DEFAULT_SPEED_LIMIT } from '../safety/safety.ts';
@@ -30,7 +30,7 @@ class FakeTreadmill implements BleDevice {
   }
   async subscribe(s: Uuid, c: Uuid, cb: (dv: DataView) => void) {
     const key = `${s.toString(16)}/${c.toString(16)}`;
-    if (!['1826/2ad9', '1826/2acd', '1826/2ada'].includes(key)) throw new Error('not there');
+    if (!['1826/2ad9', '1826/2acd', '1826/2ada', '1826/2ad3'].includes(key)) throw new Error('not there');
     this.subs.set(key, cb);
   }
   async write(_s: Uuid, _c: Uuid, data: Uint8Array) {
@@ -40,6 +40,8 @@ class FakeTreadmill implements BleDevice {
   /** The treadmill reports its speed */
   speed(kmh: number) { this.subs.get('1826/2acd')!(dataView(buildTreadmillData({ speed: kmh }))); }
   machineStatus(...bytes: number[]) { this.subs.get('1826/2ada')!(dataView(bytes)); }
+  /** The treadmill reports its training status (0x0f: Post-Workout) */
+  trainingStatus(...bytes: number[]) { this.subs.get('1826/2ad3')!(dataView(bytes)); }
   /** The treadmill answers a command */
   answer(op: number, result: number) { this.subs.get('1826/2ad9')!(dataView([0x80, op, result])); }
 }
@@ -762,6 +764,75 @@ describe('raw commands (experiment console)', () => {
   it('nothing without a connection', async () => {
     const tm = createTreadmill();
     expect(await tm.sendRaw([0x00])).toEqual({ action: 'not-connected' });
+  });
+});
+
+describe('a stop at the treadmill is hinted by Training Status 0f (#39)', () => {
+  // The ramp waits on a real timer between steps (the library's clock is a separate, injected one)
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }); });
+  afterEach(() => { vi.useRealTimers(); });
+  const flush = () => vi.advanceTimersByTimeAsync(1600);
+  const setSpeeds = (dev: FakeTreadmill) => dev.writes.filter(w => w.startsWith('02'));
+
+  /** Two agreeing readings 1.2 s apart confirm the belt's speed (the base of the next ramp step), then the ramp interval passes */
+  async function settle(dev: FakeTreadmill, kmh: number) {
+    clock += 10_000; // an older reading is no longer a base
+    dev.speed(kmh);
+    clock += 1200;
+    dev.speed(kmh);
+    clock += 1600;
+    await flush();
+  }
+
+  async function ramping() {
+    const r = await rig();
+    r.dev.speed(1);
+    r.tm.setSpeed(4);
+    await settle(r.dev, 1);
+    expect(setSpeeds(r.dev)).toEqual(['02 96 00']); // the ramp runs: 1.5
+    r.dev.writes = [];
+    return r;
+  }
+
+  it('without the hint the next ramp step goes out (the rig ramps)', async () => {
+    const { dev } = await ramping();
+    await settle(dev, 1.5);
+    expect(setSpeeds(dev)).toEqual(['02 c8 00']);
+  });
+
+  it('no ramp step goes out after the hint, before the Machine Status, and the target is kept', async () => {
+    const { tm, dev } = await ramping();
+    dev.trainingStatus(0x01, 0x0f);
+    for (const kmh of [1.5, 2, 2.5, 3]) await settle(dev, kmh);
+    expect(setSpeeds(dev)).toEqual([]);
+    expect(tm.state.target).toBeNull(); // the ramp is forgotten, as with the Machine Status "stopped"
+  });
+
+  it('the echo of a stop the app sent is no second stop: it does not overtake a Start', async () => {
+    const { tm, dev } = await ramping();
+    await tm.stop();
+    await settle(dev, 0);
+    await settle(dev, 0);
+    dev.trainingStatus(0x01, 0x0f); // 1 s after the app's stop, while the wait runs
+    expect(await tm.start()).toBe(true);
+  });
+
+  it('a Start from the app ends the hold', async () => {
+    const { tm, dev } = await ramping();
+    dev.trainingStatus(0x01, 0x0f);
+    await settle(dev, 0);
+    await settle(dev, 0);
+    await tm.start();
+    dev.writes = [];
+    await settle(dev, 1);
+    expect(setSpeeds(dev)).toEqual(['02 96 00']);
+  });
+
+  it('other training statuses change nothing', async () => {
+    const { dev } = await ramping();
+    dev.trainingStatus(0x01, 0x01);
+    await settle(dev, 1.5);
+    expect(setSpeeds(dev)).toEqual(['02 c8 00']);
   });
 });
 

@@ -187,6 +187,8 @@ export interface Treadmill {
 
 /** How long Start waits for the treadmill's answer to the start speed; one that gives none is let through */
 const SPEED_ANSWER_MS = 1000;
+/** Training Status "Post-Workout": the treadmill's hint that a stop happened, before its Machine Status (#39) */
+const TRAINING_POST_WORKOUT = 0x0f;
 /** How long a write that got no answer is remembered: a slow answer to it is still its own, not the next write's */
 const SPEED_WRITE_MEMORY_MS = 10_000;
 /** Control Point result code "Success" */
@@ -399,6 +401,7 @@ export function createTreadmill(opts: TreadmillOptions = {}): Treadmill {
       trainingStatus: dv => {
         if (!current()) return;
         const s = parseTrainingStatus(dv);
+        if (s?.status === TRAINING_POST_WORKOUT) reports.stopHint();
         emit('trainingStatus', { hex: hex(dv), status: s?.status ?? null, text: s?.text ?? null });
       },
       controlResponse: r => { if (current()) reports.controlResponse(r); },

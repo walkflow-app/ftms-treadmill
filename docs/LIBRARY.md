@@ -164,6 +164,12 @@ one of them is a `safety` commit and at least a minor version.
    running although the stop was sent (every Stop attempt failed, or a late `stopped`), no such evidence comes: the wait
    lasts until the next start, and a lowered limit is not sent then either, because a Set Speed during the coast-down may
    start the belt again on some treadmills (the open hardware question of #25). That case is named here on purpose.
+   A stop pressed on the treadmill is reported by its Machine Status only 4 to 8 s later, but about a second after the
+   press the treadmill reports Training Status `0x0f` (Post-Workout). The library takes that as the hint of a stop: from then
+   on it behaves as after a stop (the ramp is forgotten, nothing is sent, the same wait, ended by the same evidence), without
+   waiting for the Machine Status. The hint only ever holds back what is sent; whatever else `0x0f` may mean on a treadmill,
+   a wrong guess costs a delayed ramp, never a faster belt (open hardware question of #39). The hint does not count as a
+   second stop when a wait after a stop is running already (the treadmill reports it a second after every stop the app sent).
 8. No method throws during a session (only `connect`); a failed command is `false` plus a notice.
 
 ## Packaging
