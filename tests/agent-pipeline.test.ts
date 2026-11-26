@@ -456,4 +456,10 @@ describe('reviewed locally: no review on GitHub', () => {
     expect(state(s => { s.localReview = true; }).action).toBe('merge');
     expect(state(s => { s.localReview = true; s.reviews = [review('blocking')]; }).action).toBe('hold');
   });
+
+  it('one OK merges belt code, from GitHub or from the local review', () => {
+    const belt = (change: (s: State) => void) => state(s => { s.files = safetyFiles; s.pr.labels = ['needs-hardware']; change(s); });
+    expect(belt(s => { s.reviews = [review('OK', 'sonnet')]; }).action).toBe('merge');
+    expect(belt(s => { s.reviews = []; s.localReview = true; }).action).toBe('merge');
+  });
 });

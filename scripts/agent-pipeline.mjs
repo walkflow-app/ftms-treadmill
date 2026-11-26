@@ -31,7 +31,7 @@ const VERDICTS = ['OK', 'OK with remarks', 'changes needed', 'blocking'];
 const STATE = { OK: 'APPROVED', 'OK with remarks': 'COMMENTED', 'changes needed': 'CHANGES_REQUESTED', blocking: 'CHANGES_REQUESTED' };
 
 // What reaches the belt (SAFETY: label needs-hardware, a check on the treadmill before the release) and what talks to
-// others (TRUST: no treadmill) are listed in scripts/paths.mjs, shared with the safety gate and review-model.sh
+// others (TRUST: no treadmill) are listed in scripts/paths.mjs, shared with the safety gate
 export { SAFETY, TRUST };
 /** Never merged by an agent: the rules (CLAUDE.md, .claude/, .github/, scripts/), the build and test configuration, dependencies
  *  until their own rule, and the legal pages: the stop list of meta process/PRINCIPLES.md. A deny list */

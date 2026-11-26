@@ -58,7 +58,7 @@ jobs:
           cache: npm
       # So Claude can run the checks
       - run: npm ci
-      # "@claude review" in a pull request: the review runs with another model than the one that wrote the change
+      # "@claude review" in a pull request: the review runs with Sonnet
       - name: Choose the reviewing model
         id: model
         if: >-

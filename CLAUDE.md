@@ -83,7 +83,7 @@ maintainer publishes.
   Feature issue (a comment `approved`; it carries the spec), or set a spec without a Feature issue to `accepted`.
 - **Before opening a pull request**: agent `safety-reviewer` for anything in `src/device/`, `src/safety/` or `src/protocol/`;
   agent `api-reviewer` for anything exported or documented in docs/API.md. Fix what they find, or say in the pull request why not.
-  Reviewers run with another model than the one that wrote the change: written with Opus, the reviewer runs with Sonnet, and
+  Local reviewers run with another model than the one that wrote the change: written with Opus, the reviewer runs with Sonnet, and
   the other way round; when that is unclear, Opus for safety code or big changes, else Sonnet.
   On GitHub one review runs, with Sonnet. **Reviewed locally means no review on GitHub:** once the reviewers that apply have run
   and their findings are fixed, the last commit of the branch carries the line `Local-Review: done` in its message (with nothing
