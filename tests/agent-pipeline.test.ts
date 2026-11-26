@@ -453,7 +453,8 @@ describe('reviewed locally: no review on GitHub', () => {
   });
 
   it('counts as OK; a review of the commit on GitHub counts before it', () => {
-    expect(state(s => { s.localReview = true; }).action).toBe('merge');
+    expect(state(s => { s.reviews = []; }).action).toBe('wait');
+    expect(state(s => { s.reviews = []; s.localReview = true; }).action).toBe('merge');
     expect(state(s => { s.localReview = true; s.reviews = [review('blocking')]; }).action).toBe('hold');
   });
 
