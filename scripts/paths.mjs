@@ -1,8 +1,8 @@
 // The paths the process distinguishes, in one place: read by the agent pipeline, the safety gate, the release gate and the choice
-// of the reviewing model (.github/scripts/review-model.sh). Change a list here and nowhere else (same as walkflow's scripts/paths.mjs).
+// of the pipeline. Change a list here and nowhere else (same as walkflow's scripts/paths.mjs).
 // CODEOWNERS mirrors it and is kept by hand.
 
-/** Belt code: what decides what is sent to the treadmill (the promises of docs/LIBRARY.md). Test first, two reviews by two models,
+/** Belt code: what decides what is sent to the treadmill (the promises of docs/LIBRARY.md). Test first, reviewed,
  *  label needs-hardware, one check on a treadmill before the release is published to npm. The pipeline merges it. */
 export const SAFETY = [/^src\/safety\//, /^src\/protocol\//, /^src\/device\/(treadmill|belt-commands|ble|reports|belt-state|web-bluetooth)\.ts$/];
 

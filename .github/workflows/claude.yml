@@ -5,7 +5,7 @@ name: Claude
 # feature starts only when the feature is approved and its blockers are closed (scripts/feature-gate.mjs). It works by
 # CLAUDE.md, on a branch claude/…, and opens a pull request; `main` takes changes only through pull requests, so nothing
 # reaches it without a merge. Belt code (the list SAFETY in scripts/paths.mjs) is built like any other issue, test first, with the
-# safety reviewer; the pipeline then reviews it with two models, and the treadmill check comes once before the release.
+# safety reviewer; the pipeline then reviews it, and the treadmill check comes once before the release.
 # Needs the secret CLAUDE_CODE_OAUTH_TOKEN (claude setup-token).
 on:
   issue_comment:

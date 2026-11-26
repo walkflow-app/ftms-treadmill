@@ -101,8 +101,8 @@ run in `.claude/settings.json`, their skills (release, specs) and reviewers (saf
 Every new pull request gets a review by AI agents (`.github/workflows/agent-review.yml`): they check what this repository's
 `CLAUDE.md` asks for and post one comment with their verdict. Maintainers can ask for more with `@claude …` in a comment, or
 hand over an issue with the label `agent-ready` (`.github/workflows/claude.yml`); agents never take on issues labelled `safety`
-and never merge. Pull requests from forks are not reviewed by agents. A review runs with another model than the one that wrote
-the change (Opus and Sonnet check each other; `.github/scripts/review-model.sh`).
+and never merge. Pull requests from forks are not reviewed by agents. GitHub reviews with
+Sonnet only, once; a head commit with the line `Local-Review: done` is not reviewed there.
 
 A new issue from someone outside the project is sorted by `triage.yml`: an agent that can only read proposes labels,
 duplicates, missing details and where in the code it is; a second job without an agent checks that and writes the labels and

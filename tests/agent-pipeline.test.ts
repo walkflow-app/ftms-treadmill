@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain script without types, also run by node in CI
-import { checkFix, classify, decide, failedFixRuns, headAge, holdLabel, LIMITS, marker, parseVerdict, quiet, resolveMember, reviewEvent, reviewModels, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
+import { checkFix, classify, decide, failedFixRuns, headAge, holdLabel, LIMITS, marker, parseVerdict, quiet, resolveMember, reviewEvent, reviewedLocally, REVIEWER, WRITER } from '../scripts/agent-pipeline.mjs';
 // @ts-expect-error plain script without types, also run by node in CI
 import { confirms, owners, releaseGate } from '../scripts/release-gate.mjs';
 
@@ -39,6 +39,7 @@ interface State {
   failedFixes: number;
   headKicked: boolean;
   reviewFailed: boolean;
+  localReview: boolean;
 }
 
 /** A pull request that is reviewed OK, green and mergeable; each test changes one thing */
@@ -64,6 +65,7 @@ function state(change: (s: State) => void = () => {}) {
     headAgeHours: 1,
     failedFixes: 0,
     headKicked: false,
+    localReview: false,
     reviewFailed: false,
   };
   change(s);
@@ -131,13 +133,6 @@ describe('agent pipeline: the files', () => {
 
   it('fails closed when the API cannot list all files', () => {
     expect(classify(Array.from({ length: 3000 }, (_, i) => ({ filename: `examples/f${i}.ts` }))).protected).toHaveLength(1);
-  });
-
-  it('two models review a safety change, one otherwise, one when the pipeline is off', () => {
-    expect(reviewModels(safetyFiles, 'sonnet', true)).toEqual(['opus', 'sonnet']);
-    expect(reviewModels([{ filename: 'README.md' }], 'sonnet', true)).toEqual(['sonnet']);
-    expect(reviewModels(safetyFiles, 'opus', false)).toEqual(['opus']);
-    expect(reviewModels([{ filename: 'src/protocol/ftms.ts' }], 'sonnet', true)).toEqual(['opus', 'sonnet']);
   });
 
   it('never pushes a fix that reaches a protected file, whatever its name', () => {
@@ -311,13 +306,13 @@ describe('agent pipeline: what happens next', () => {
     });
   });
 
-  it('a safety change needs OK from both models, and is merged only on top of main', () => {
+  it('a safety change needs an OK, is merged only on top of main', () => {
     const safe = (change: NonNullable<Parameters<typeof state>[0]>) => state(s => { s.files = safetyFiles; s.pr.labels = ['needs-hardware']; change(s); });
-    expect(safe(() => {}).action).toBe('wait');
+    expect(safe(s => { s.reviews = []; }).action).toBe('wait');
     expect(safe(s => { s.reviews = [review('OK', 'opus'), review('OK', 'sonnet')]; }).action).toBe('merge');
     expect(safe(s => { s.reviews = [review('OK', 'opus'), review('OK with remarks', 'sonnet')]; }).action).toBe('fix');
     expect(safe(s => { s.reviews = [review('OK', 'opus'), review('OK', 'sonnet')]; s.behindBy = 2; }).action).toBe('update');
-    // Remarks the fix agent declined: the maintainer decides, a safety change is merged only on two OKs
+    // Remarks the fix agent declined: the maintainer decides, a safety change is merged only on an OK
     expect(safe(s => { s.reviews = [review('OK', 'opus'), review('OK with remarks', 'sonnet')]; s.comments = [fixDone(HEAD, 'remarks')]; }).action).toBe('hold');
     expect(safe(s => { s.reviews = [review('OK', 'opus', HEAD, 'other title'), review('OK', 'sonnet')]; }).action).toBe('hold');
     // Right after main moved GitHub says UNKNOWN: the conflict that is solved first may be there, so no hold on the reviews yet
@@ -432,5 +427,33 @@ describe('release gate', () => {
     expect(confirms({ ...ok, body: 'looks fine, /hardware-ok later' }, who, '')).toBe(false);
     expect(confirms({ ...ok, body: 'Done.\n/hardware-ok\n' }, who, '')).toBe(true);
     expect(releaseGate([pr(['src/safety/a.ts'], [{ ...ok, createdAt: '2026-11-17T00:00:00Z' }])], [], who)).toHaveLength(1);
+  });
+});
+
+describe('reviewed locally: no review on GitHub', () => {
+  const person = { author: { type: 'User' } };
+  const commit = (message: string, more = {}) => ({ commit: { message, verification: { verified: false } }, parents: [{ sha: 'a' }], ...more });
+  const reviewed = commit('fix: x\n\nLocal-Review: done\n');
+  const merge = (over = {}) => ({
+    commit: { message: "Merge branch 'main' into x", verification: { verified: true } },
+    committer: { login: 'web-flow' }, parents: [{ sha: 'a' }, { sha: 'b' }], ...over,
+  });
+
+  it('reads the line of the head commit, on a person\'s pull request only', () => {
+    expect(reviewedLocally(person, reviewed)).toBe(true);
+    expect(reviewedLocally(person, commit('fix: x'))).toBe(false);
+    expect(reviewedLocally(person, commit('docs: how Local-Review: done works'))).toBe(false);
+    expect(reviewedLocally({ author: { type: 'Bot' } }, reviewed)).toBe(false);
+  });
+
+  it('keeps it over a merge of main that GitHub made, over no other merge', () => {
+    expect(reviewedLocally(person, merge(), reviewed)).toBe(true);
+    expect(reviewedLocally(person, merge(), commit('fix: x'))).toBe(false);
+    expect(reviewedLocally(person, merge({ committer: { login: 'someone' } }), reviewed)).toBe(false);
+  });
+
+  it('counts as OK; a review of the commit on GitHub counts before it', () => {
+    expect(state(s => { s.localReview = true; }).action).toBe('merge');
+    expect(state(s => { s.localReview = true; s.reviews = [review('blocking')]; }).action).toBe('hold');
   });
 });
