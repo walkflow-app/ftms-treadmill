@@ -88,7 +88,8 @@ maintainer publishes.
   On GitHub one review runs, with Sonnet. **Reviewed locally means no review on GitHub:** once the reviewers that apply have run
   and their findings are fixed, the last commit of the branch carries the line `Local-Review: done` in its message (with nothing
   left to commit: `git commit --allow-empty -m "chore: local review done" -m "Local-Review: done"`). Never add it without that
-  review; a later commit without it is reviewed on GitHub again.
+  review; a later commit without it is reviewed on GitHub again. The line is trusted:
+  nothing checks that a review ran.
 - **"release"**: skill `release` (stops before publishing until the treadmill checks are confirmed; brings the new version into the app afterwards).
 - **On GitHub:** `agent-review.yml` runs the reviewers on every new pull request and posts their verdicts (comment
   `@claude review` to run it again); `claude.yml` takes on `@claude …` requests and issues labelled `agent-ready`, belt code
