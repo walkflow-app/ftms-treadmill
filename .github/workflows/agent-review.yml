@@ -4,8 +4,8 @@ name: Agent review
 # summary to a file; a second job, without the agent, posts it. With the repository variable AGENT_PIPELINE off that is one
 # comment, as before. With it on (meta spec 0002, CONTRIBUTING.md → Agents on GitHub) it is a review of the GitHub App
 # walkflow-reviewer on exactly the reviewed commit (OK: approve, OK with remarks: comment, changes needed or blocking: request
-# changes), and agent-pipeline.yml decides what follows. The review runs with another model than the one that wrote the
-# change (.github/scripts/review-model.sh); a change to a safety path is reviewed by Opus and Sonnet.
+# changes), and agent-pipeline.yml decides what follows. One review, with Sonnet
+# (.github/scripts/review-model.sh); none when the head commit says `Local-Review: done` (reviewed locally).
 # On a new pull request or one marked ready, with the pipeline on also on every new commit; comment "@claude review" to run
 # the review in claude.yml instead.
 # Needs the secret CLAUDE_CODE_OAUTH_TOKEN (claude setup-token); with the pipeline on also REVIEWER_APP_ID (variable) and
@@ -34,7 +34,7 @@ jobs:
       (github.event.action != 'synchronize' || vars.AGENT_PIPELINE == 'on')
     runs-on: ubuntu-latest
     outputs:
-      models: ${{ steps.models.outputs.models }}
+      local: ${{ steps.local.outputs.local }}
       why: ${{ steps.model.outputs.why }}
     steps:
       - uses: actions/checkout@v7
@@ -46,22 +46,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: .github/scripts/review-model.sh
-      - name: Both models for a safety change
-        id: models
+      # `Local-Review: done` in the head commit of a person's pull request: no review here
+      - name: Reviewed locally already?
+        id: local
         env:
           GH_TOKEN: ${{ github.token }}
-          CHOSEN: ${{ steps.model.outputs.model }}
-          AGENT_PIPELINE: ${{ vars.AGENT_PIPELINE }}
-        run: node scripts/agent-pipeline.mjs models "${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          out=$(node scripts/agent-pipeline.mjs local-review "$PR") || out=local=false
+          echo "$out" | tee -a "$GITHUB_OUTPUT"
 
   review:
     needs: plan
+    if: needs.plan.outputs.local != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(needs.plan.outputs.models) }}
+        model: [sonnet]
     permissions:
       contents: read
       pull-requests: write
@@ -92,7 +95,7 @@ jobs:
 
             1. Read CLAUDE.md. Its section "How work is done here" says which reviewer agents apply to which changes. The
                safety reviewer always applies when a changed file matches a pattern of SAFETY or TRUST in scripts/paths.mjs
-               (read it); two models review such a change, one of them as that reviewer.
+               (read it).
             2. List the changed files: gh pr diff ${{ github.event.pull_request.number }} --name-only
             3. For every reviewer that applies, read its role in .claude/agents/<name>.md and review the diff as that
                reviewer yourself, one after the other. Do not start subagents or background tasks: the run ends when you
@@ -124,7 +127,7 @@ jobs:
   # Without the agent, from main: the verdicts become a comment, or reviews of the reviewer app
   submit:
     needs: [plan, review]
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.local != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -138,16 +141,14 @@ jobs:
         with:
           path: reviews
       - name: Name the summaries by model
-        env:
-          MODELS: ${{ needs.plan.outputs.models }}
         run: |
           # Where download-artifact puts a file depends on its version and on how many artifacts there are: search for it
           mkdir -p verdicts
           find reviews -type f
           while IFS= read -r f; do
             m=$(printf '%s' "$f" | grep -oE 'review-(opus|sonnet|haiku)' | head -n 1 | sed 's/^review-//')
-            # A single artifact may land without its own folder: then it is the one model of the plan
-            [ -n "$m" ] || m=$(node -e 'const m = JSON.parse(process.env.MODELS); if (m.length === 1) console.log(m[0])')
+            # A single artifact may land without its own folder: then it is the one model that reviews
+            [ -n "$m" ] || m=sonnet
             [ -n "$m" ] && cp "$f" "verdicts/$m.md"
           done < <(find reviews -type f -name summary.md)
           ls verdicts

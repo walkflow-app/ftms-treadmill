@@ -3,7 +3,7 @@
 // from main (agent-pipeline.yml, the second jobs of agent-review.yml and agent-fix.yml), never from the pull request, so a
 // pull request cannot change the rules it is judged by.
 //
-//   node scripts/agent-pipeline.mjs models <pr>                  which models review (plan job of agent-review.yml)
+//   node scripts/agent-pipeline.mjs local-review <pr>            was the head commit reviewed locally? (plan job of agent-review.yml)
 //   node scripts/agent-pipeline.mjs submit-review <pr> <dir>     the verdicts in <dir>/*.md → one review each
 //   node scripts/agent-pipeline.mjs sweep                        decide and act for every open pull request
 //   node scripts/agent-pipeline.mjs check-fix <pr> <sha> <paths> may this fix be pushed? (agent-fix.yml; paths NUL-separated)
@@ -30,8 +30,8 @@ const VERDICTS = ['OK', 'OK with remarks', 'changes needed', 'blocking'];
 /** The review state each verdict is submitted as; a marker that does not match its review is not believed */
 const STATE = { OK: 'APPROVED', 'OK with remarks': 'COMMENTED', 'changes needed': 'CHANGES_REQUESTED', blocking: 'CHANGES_REQUESTED' };
 
-// What reaches the belt (SAFETY: two models, label needs-hardware, a check on the treadmill before the release) and what talks to
-// others (TRUST: two models, no treadmill) are listed in scripts/paths.mjs, shared with the safety gate and review-model.sh
+// What reaches the belt (SAFETY: label needs-hardware, a check on the treadmill before the release) and what talks to
+// others (TRUST: no treadmill) are listed in scripts/paths.mjs, shared with the safety gate
 export { SAFETY, TRUST };
 /** Never merged by an agent: the rules (CLAUDE.md, .claude/, .github/, scripts/), the build and test configuration, dependencies
  *  until their own rule, and the legal pages: the stop list of meta process/PRINCIPLES.md. A deny list */
@@ -98,7 +98,7 @@ export function decide(s) {
   const { pr } = s;
   const files = classify(s.files);
   const safety = files.safety;
-  // Belt code and trust-boundary code are reviewed by both models, merged on top of the current main, and never on remarks the fix declined
+  // Belt code and trust-boundary code are merged on top of the current main, and never on remarks the fix declined
   const careful = safety || files.trust;
   const kind = safety ? 'a safety change' : 'a trust-boundary change';
   const out = (action, reason, extra = {}) => ({ action, reason, safety, careful, addLabels: safety && !pr.labels.includes('needs-hardware') ? ['needs-hardware'] : [], ...extra });
@@ -160,14 +160,15 @@ export function decide(s) {
   // No verdict on the reviews while GitHub does not know about a conflict: it may be there, and it is solved first
   if (unknown && !stale) return out('wait', 'GitHub does not know yet whether there is a conflict');
 
-  // The review of the head commit: for a safety change one by each model
+  // The review of the head commit: one on GitHub, or the local one its message names
   const onHead = reviews.filter(r => r.commitId === pr.headSha);
-  const models = new Set(onHead.map(r => r.mark.model));
-  const complete = careful ? models.has('opus') && models.has('sonnet') : onHead.length > 0;
+  // A review on GitHub of this commit (asked for by hand) counts before the local one
+  const local = !onHead.length && s.localReview;
+  const complete = local || onHead.length > 0;
   let reviewedTitles;
   if (complete) {
     const verdict = worst(onHead.map(r => r.mark.verdict));
-    reviewedTitles = onHead.map(r => r.mark.title);
+    reviewedTitles = local ? [pr.title] : onHead.map(r => r.mark.title);
     if (verdict === 'blocking') return out('hold', 'the review says blocking');
     if (verdict === 'changes needed') {
       if (fixed(pr.headSha, 'remarks')) return out('hold', 'the review asks for changes and the fix changed nothing');
@@ -176,7 +177,7 @@ export function decide(s) {
     }
     if (verdict === 'OK with remarks') {
       if (!fixed(pr.headSha, 'remarks')) return out('fix', 'the review has remarks', { mode: 'remarks', sha: pr.headSha });
-      // A safety change is merged only when both models say OK: remarks the fix agent declined go to the maintainer
+      // A safety change is merged only when the review says OK: remarks the fix agent declined go to the maintainer
       if (careful) return out('hold', `${kind} with remarks the fix agent declined`);
     }
   } else {
@@ -232,8 +233,24 @@ export const headAge = (now, runDates, commitDate, resetAt) => {
 /** The label a hold gets: `needs-maintainer` for the rules themselves (the stop list), `stuck` for everything else (the PM looks) */
 export const holdLabel = d => d.label ?? 'stuck';
 
-/** The models that review a pull request: safety changes by both, otherwise the one review-model.sh chose */
-export const reviewModels = (files, chosen, pipeline) => (pipeline && (c => c.safety || c.trust)(classify(files)) ? ['opus', 'sonnet'] : [chosen]);
+/** The line in the head commit that says the change was reviewed locally: then GitHub does not review it again */
+const LOCAL_REVIEW = /^Local-Review: *done *\r?$/im;
+
+/**
+ * Was the head commit reviewed locally? Believed only on a person's pull request (never an agent's). `commit` and `parent`
+ * (its first parent, read only for a merge) are as the API returns them. A merge of main that GitHub made itself
+ * (update-branch: committed by web-flow and signed) keeps what its first parent said.
+ */
+export function reviewedLocally(pr, commit, parent) {
+  if (pr.author.type !== 'User') return false;
+  const updated = commit.parents?.length === 2 && commit.committer?.login === 'web-flow' && commit.commit.verification?.verified;
+  return LOCAL_REVIEW.test((updated && parent ? parent : commit).commit.message);
+}
+
+function readLocalReview(author, commit) {
+  const parent = commit.parents?.length === 2 ? api(`repos/${REPO}/commits/${commit.parents[0].sha}`) : undefined;
+  return reviewedLocally({ author }, commit, parent);
+}
 
 /** May the patch of a fix be pushed? It must not reach a protected file */
 export function checkFix(paths) {
@@ -303,6 +320,7 @@ function readState(n, pipeline) {
     files: pages(`repos/${REPO}/pulls/${n}/files?per_page=100`),
     issueAuthors: g.closingIssuesReferences.nodes.map(i => resolveMember(i.author?.login, i.authorAssociation, isOrgMember)),
     reviews,
+    localReview: readLocalReview({ type: p.user.type }, commit),
     comments: pages(`repos/${REPO}/issues/${n}/comments?per_page=100`).map(c => ({ user: c.user?.login, body: c.body })),
     checks,
     mergeable: g.mergeable,
@@ -407,9 +425,9 @@ function submitReview(n, dir) {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [cmd, ...args] = process.argv.slice(2);
-  if (cmd === 'models') {
-    const files = pages(`repos/${REPO}/pulls/${args[0]}/files?per_page=100`);
-    console.log(`models=${JSON.stringify(reviewModels(files, process.env.CHOSEN ?? 'sonnet', process.env.AGENT_PIPELINE === 'on'))}`);
+  if (cmd === 'local-review') {
+    const p = api(`repos/${REPO}/pulls/${args[0]}`);
+    console.log(`local=${readLocalReview({ type: p.user.type }, api(`repos/${REPO}/commits/${p.head.sha}`))}`);
   } else if (cmd === 'submit-review') submitReview(args[0], args[1]);
   else if (cmd === 'sweep') sweep();
   else if (cmd === 'check-fix') {
@@ -422,7 +440,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       process.exitCode = r.ok ? 0 : 1;
     }
   } else {
-    console.error('usage: agent-pipeline.mjs models <pr> | submit-review <pr> <dir> | sweep | check-fix <pr> <sha> <NUL-separated paths file>');
+    console.error('usage: agent-pipeline.mjs local-review <pr> | submit-review <pr> <dir> | sweep | check-fix <pr> <sha> <NUL-separated paths file>');
     process.exitCode = 2;
   }
 }
